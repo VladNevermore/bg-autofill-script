@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автозаполнение и проверка параметров
 // @namespace    http://tampermonkey.net/
-// @version      9.0
+// @version      9.1
 // @description  Автозаполнение форм и сравнение параметров
 // @match        https://crm.finleo.ru/orders/*
 // @match        https://market.bg.ingobank.ru/tasks*
@@ -994,7 +994,7 @@
 
         const profileBtn = document.createElement('button');
         profileBtn.className = 'tm-control-btn tm-profile-btn';
-        profileBtn.textContent = 'Заполнить чтоооо';
+        profileBtn.textContent = 'Заполнить анкету';
         profileBtn.style.bottom = '150px';
         profileBtn.onclick = fillProfileInFirstBank;
         document.body.appendChild(profileBtn);
