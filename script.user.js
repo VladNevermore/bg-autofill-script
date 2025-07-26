@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Автозаполнение заявки 
+// @name         Автозаполнение и проверка параметров
 // @namespace    http://tampermonkey.net/
-// @version      8.1
-// @description  Заполнение форм 
+// @version      9.0
+// @description  Автозаполнение форм и сравнение параметров
 // @match        https://crm.finleo.ru/orders/*
 // @match        https://market.bg.ingobank.ru/tasks*
 // @match        https://bg.realistbank.ru/new_ticket*
@@ -11,6 +11,7 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_addStyle
+// @grant        GM_xmlhttpRequest
 // @updateURL    https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script.user.js
 // @downloadURL  https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script.user.js
 // ==/UserScript==
@@ -18,11 +19,9 @@
 (function() {
     'use strict';
 
-    const log = (message, data = null) => {
-        console.log(`[BG Script] ${message}`, data || '');
-    };
-
+    // Общие стили для обоих функционалов
     GM_addStyle(`
+        /* Стили для автозаполнения */
         .tm-control-btn {
             position: fixed;
             z-index: 9999;
@@ -40,42 +39,12 @@
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         }
-        .tm-save-btn {
-            background: #4CAF50;
-            color: white;
-            bottom: 20px;
-            right: 20px;
-        }
-        .tm-profile-btn {
-            background: #9C27B0;
-            color: white;
-            bottom: 80px;
-            right: 20px;
-        }
-        .tm-fill-btn {
-            background: #2196F3;
-            color: white;
-            bottom: 140px;
-            right: 20px;
-        }
-        .tm-fast-btn {
-            background: #FF5722;
-            color: white;
-            bottom: 200px;
-            right: 20px;
-        }
-        .tm-like-btn {
-            background: #FF9800;
-            color: white;
-            bottom: 260px;
-            right: 20px;
-        }
-        .tm-realist-btn {
-            background: #607D8B;
-            color: white;
-            bottom: 320px;
-            right: 20px;
-        }
+        .tm-save-btn { background: #4CAF50; color: white; bottom: 20px; right: 20px; }
+        .tm-profile-btn { background: #9C27B0; color: white; bottom: 80px; right: 20px; }
+        .tm-fill-btn { background: #2196F3; color: white; bottom: 140px; right: 20px; }
+        .tm-fast-btn { background: #FF5722; color: white; bottom: 200px; right: 20px; }
+        .tm-like-btn { background: #FF9800; color: white; bottom: 260px; right: 20px; }
+        .tm-realist-btn { background: #607D8B; color: white; bottom: 320px; right: 20px; }
         .tm-status {
             position: fixed;
             z-index: 9998;
@@ -140,13 +109,59 @@
             transition: .4s;
             border-radius: 50%;
         }
-        input:checked + .tm-toggle-slider {
-            background-color: #2196F3;
+        input:checked + .tm-toggle-slider { background-color: #2196F3; }
+        input:checked + .tm-toggle-slider:before { transform: translateX(20px); }
+
+        /* Стили для проверки параметров */
+        .highlight {
+            background-color: #fff3cd !important;
+            color: #856404 !important;
+            border: 1px solid #ffeeba !important;
+            padding: 2px 5px !important;
+            border-radius: 4px !important;
         }
-        input:checked + .tm-toggle-slider:before {
-            transform: translateX(20px);
+        .match {
+            background-color: #d4edda !important;
+            color: #155724 !important;
+            border: 1px solid #c3e6cb !important;
+            padding: 2px 5px !important;
+            border-radius: 4px !important;
+        }
+        .warning {
+            background-color: #f8d7da !important;
+            color: #721c24 !important;
+            border: 1px solid #f5c6cb !important;
+            padding: 2px 5px !important;
+            border-radius: 4px !important;
+        }
+        .comparison-container {
+            position: fixed;
+            top: 210px;
+            right: 10px;
+            z-index: 10000;
+            background-color: white;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+        }
+        .comparison-container button {
+            padding: 5px 10px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 10px;
         }
     `);
+
+    // ==================== Функционал автозаполнения ====================
+    const log = (message, data = null) => {
+        console.log(`[BG Script] ${message}`, data || '');
+    };
 
     const showStatus = (message, duration = 3000) => {
         const existing = document.querySelector('.tm-status');
@@ -328,9 +343,298 @@
         document.body.appendChild(container);
     };
 
+    // ==================== Функционал проверки параметров ====================
+    function createComparisonButton() {
+        const container = document.createElement('div');
+        container.className = 'comparison-container';
+
+        const button = document.createElement('button');
+        button.textContent = 'Сравнить параметры';
+
+        button.addEventListener('click', () => {
+            const linkElement = document.querySelector('.sc-gIFmxT.eRwsKd .sc-dGJnDi.jHPrMj a');
+            if (linkElement && linkElement.href) {
+                compareParameters(linkElement.href);
+            } else {
+                alert('Не найдена ссылка на закупку на странице');
+            }
+        });
+
+        container.appendChild(button);
+        document.body.appendChild(container);
+    }
+
+    async function compareParameters(procurementUrl) {
+        try {
+            const procurementData = await fetchProcurementData(procurementUrl);
+            const clientData = getClientData();
+            const requirementType = getRequirementType(clientData.requirement);
+
+            compareAndHighlight('Номер извещения', clientData.noticeNumber, procurementData.noticeNumber);
+            compareAndHighlight('Предмет контракта', clientData.purchaseSubject, procurementData.purchaseSubject);
+            compareAndHighlight('Начальная цена', clientData.maxPrice, procurementData.maxPrice);
+
+            if (requirementType === 'participation') {
+                compareAndHighlight('Сумма БГ', clientData.guaranteeAmount, procurementData.bidSecurityAmount);
+                checkApplicationDeadline(clientData.guaranteePeriod, procurementData.applicationDeadline);
+            } else if (requirementType === 'execution') {
+                compareAndHighlight('Сумма БГ', clientData.guaranteeAmount, procurementData.contractSecurityAmount, procurementData.guaranteePercent);
+                compareAndHighlight('Аванс', clientData.advancePayment, procurementData.advancePayment);
+                checkContractPeriod(clientData.guaranteePeriod, procurementData.contractPeriod);
+            } else if (requirementType === 'warranty') {
+                compareAndHighlight('Сумма БГ', clientData.guaranteeAmount, procurementData.warrantySecurityAmount);
+            }
+        } catch (error) {
+            console.error('Ошибка при сравнении параметров:', error);
+            alert('Ошибка при сравнении параметров. Проверьте ссылку и попробуйте снова.');
+        }
+    }
+
+    function getRequirementType(requirementText) {
+        if (!requirementText) return 'unknown';
+        if (requirementText.includes('БГ на участие') || requirementText.includes('Обеспечение заявки')) return 'participation';
+        if (requirementText.includes('БГ на исполнение') || requirementText.includes('Обеспечение исполнения')) return 'execution';
+        if (requirementText.includes('БГ на гарантийный срок') || requirementText.includes('Гарантийные обязательства')) return 'warranty';
+        return 'unknown';
+    }
+
+    function checkApplicationDeadline(clientPeriod, applicationDeadline) {
+        if (!clientPeriod || clientPeriod === 'Нет данных' || !applicationDeadline || applicationDeadline === 'Нет данных') return;
+
+        const clientDates = parseClientPeriod(clientPeriod);
+        const deadlineDate = parseDate(applicationDeadline);
+        if (!clientDates || !deadlineDate) return;
+
+        const field = findFieldElement('Срок');
+        if (field && field.valueElement) {
+            field.valueElement.classList.remove('highlight', 'match', 'warning');
+
+            const deadlinePlusMonth = new Date(deadlineDate);
+            deadlinePlusMonth.setMonth(deadlinePlusMonth.getMonth() + 1);
+
+            if (clientDates.endDate >= deadlinePlusMonth) {
+                field.valueElement.classList.add('match');
+                field.valueElement.title = 'Срок гарантии соответствует требованиям (больше чем дата окончания заявок + 1 месяц)';
+            } else {
+                field.valueElement.classList.add('highlight');
+                field.valueElement.title = 'Срок гарантии меньше чем дата окончания заявок + 1 месяц';
+            }
+        }
+    }
+
+    function checkContractPeriod(clientPeriod, procurementPeriod) {
+        if (!clientPeriod || clientPeriod === 'Нет данных' || !procurementPeriod || procurementPeriod === 'Нет данных') return;
+
+        const clientDates = parseClientPeriod(clientPeriod);
+        const procurementDate = parseDate(procurementPeriod);
+        if (!clientDates || !procurementDate) return;
+
+        const field = findFieldElement('Срок');
+        if (field && field.valueElement) {
+            field.valueElement.classList.remove('highlight', 'match', 'warning');
+
+            if (clientDates.endDate >= procurementDate) {
+                field.valueElement.classList.add('match');
+                field.valueElement.title = 'Срок гарантии соответствует сроку исполнения контракта';
+            } else {
+                field.valueElement.classList.add('highlight');
+                field.valueElement.title = 'Срок гарантии меньше срока исполнения контракта';
+            }
+        }
+    }
+
+    function parseClientPeriod(periodText) {
+        const dateMatch = periodText.match(/(\d{2}\.\d{2}\.\d{4})\s*—\s*(\d{2}\.\d{2}\.\d{4})/);
+        if (!dateMatch) return null;
+
+        return {
+            startDate: parseDate(dateMatch[1]),
+            endDate: parseDate(dateMatch[2])
+        };
+    }
+
+    function parseDate(dateString) {
+        const parts = dateString.split(/[\.\s:]/);
+        if (parts.length >= 3) {
+            const day = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1;
+            const year = parseInt(parts[2], 10);
+            let date = new Date(year, month, day);
+            
+            if (parts.length >= 5) {
+                const hours = parseInt(parts[3], 10);
+                const minutes = parseInt(parts[4], 10);
+                date.setHours(hours, minutes);
+            }
+            
+            return date;
+        }
+        return null;
+    }
+
+    function fetchProcurementData(url) {
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: url,
+                onload: function(response) {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(response.responseText, 'text/html');
+
+                    const noticeNumberElement = doc.querySelector('.cardMainInfo__purchaseLink a');
+                    const noticeNumber = noticeNumberElement ? noticeNumberElement.textContent.trim().replace(/№\s*/g, '') : 'Нет данных';
+
+                    const purchaseSubjectElement = doc.querySelector('.cardMainInfo__section span.cardMainInfo__content');
+                    const purchaseSubject = purchaseSubjectElement ? purchaseSubjectElement.textContent.trim() : 'Нет данных';
+
+                    const maxPriceElement = doc.querySelector('.price .cardMainInfo__content.cost');
+                    let maxPrice = maxPriceElement ? maxPriceElement.textContent.trim().replace(/\s/g, '') : 'Нет данных';
+                    let maxPriceValue = maxPrice !== 'Нет данных' ? parseFloat(maxPrice.replace(/\s/g, '').replace(',', '.')) : 0;
+
+                    let bidSecurityAmount = 'Нет данных';
+                    const bidSecuritySection = findSectionByTitle(doc, 'Размер обеспечения заявки');
+                    if (bidSecuritySection) bidSecurityAmount = cleanAmountText(bidSecuritySection.querySelector('.section__info').textContent.trim());
+
+                    let contractSecurityAmount = 'Нет данных';
+                    let guaranteePercent = null;
+                    const contractSecuritySection = findSectionByTitle(doc, 'Размер обеспечения исполнения контракта');
+                    if (contractSecuritySection) {
+                        const guaranteeText = contractSecuritySection.querySelector('.section__info').textContent.trim();
+                        contractSecurityAmount = guaranteeText.split('\n')[0].trim();
+                        const percentMatch = contractSecurityAmount.match(/(\d+(?:,\d+)?)\s*%/);
+                        if (percentMatch) {
+                            guaranteePercent = parseFloat(percentMatch[1].replace(',', '.'));
+                            if (!isNaN(guaranteePercent) && maxPriceValue > 0) {
+                                const calculatedAmount = (maxPriceValue * guaranteePercent) / 100;
+                                contractSecurityAmount = new Intl.NumberFormat('ru-RU').format(calculatedAmount) + ' руб.';
+                            }
+                        }
+                    }
+
+                    let warrantySecurityAmount = 'Нет данных';
+                    const warrantySecuritySection = findSectionByTitle(doc, 'Размер обеспечения гарантийных обязательств');
+                    if (warrantySecuritySection) warrantySecurityAmount = cleanAmountText(warrantySecuritySection.querySelector('.section__info').textContent.trim());
+
+                    let advancePayment = 'Нет данных';
+                    const advanceSection = findSectionByTitle(doc, 'Размер аванса');
+                    if (advanceSection) advancePayment = advanceSection.querySelector('.section__info').textContent.trim();
+
+                    let applicationDeadline = 'Нет данных';
+                    const deadlineSection = findSectionByTitle(doc, 'Дата и время окончания срока подачи заявок');
+                    if (deadlineSection) applicationDeadline = deadlineSection.querySelector('.section__info').textContent.replace(/\([^)]+\)/g, '').trim();
+
+                    let contractPeriod = 'Нет данных';
+                    const contractSection = findSectionByTitle(doc, 'Срок исполнения контракта');
+                    if (contractSection) contractPeriod = contractSection.querySelector('.section__info').textContent.trim().split('\n')[0].trim();
+
+                    resolve({
+                        purchaseSubject: purchaseSubject,
+                        maxPrice: maxPrice,
+                        bidSecurityAmount: bidSecurityAmount,
+                        contractSecurityAmount: contractSecurityAmount,
+                        warrantySecurityAmount: warrantySecurityAmount,
+                        advancePayment: advancePayment,
+                        noticeNumber: noticeNumber,
+                        applicationDeadline: applicationDeadline,
+                        contractPeriod: contractPeriod,
+                        guaranteePercent: guaranteePercent
+                    });
+                },
+                onerror: function(error) {
+                    reject(error);
+                }
+            });
+        });
+    }
+
+    function findSectionByTitle(doc, titleText) {
+        const sections = Array.from(doc.querySelectorAll('.blockInfo__section'));
+        return sections.find(section => {
+            const title = section.querySelector('.section__title');
+            return title && title.textContent.includes(titleText);
+        });
+    }
+
+    function cleanAmountText(text) {
+        return text.replace(/[^\d,.]/g, '').replace(/\s/g, '').replace(',', '.');
+    }
+
+    function getClientData() {
+        function findValueByTitle(titleText) {
+            const field = findFieldElement(titleText);
+            return field && field.valueElement ? field.valueElement.textContent.trim() : 'Нет данных';
+        }
+
+        const requirementField = findFieldElement('Потребность');
+        const requirement = requirementField && requirementField.valueElement ? requirementField.valueElement.textContent.trim() : 'Нет данных';
+
+        const advanceField = findFieldElement('Аванс');
+        let advancePayment = 'Нет данных';
+        if (advanceField && advanceField.valueElement) {
+            const advanceText = advanceField.valueElement.textContent.trim();
+            advancePayment = advanceText.includes('нет') ? 'Нет' : advanceText.split('/')[0].trim();
+        }
+
+        return {
+            purchaseSubject: findValueByTitle('Предмет контракта') || 'Нет данных',
+            maxPrice: findValueByTitle('Начальная цена') || 'Нет данных',
+            guaranteeAmount: findValueByTitle('Сумма БГ') || 'Нет данных',
+            noticeNumber: findValueByTitle('Номер извещения') || 'Нет данных',
+            guaranteePeriod: findValueByTitle('Срок') || 'Нет данных',
+            requirement: requirement,
+            advancePayment: advancePayment
+        };
+    }
+
+    function compareAndHighlight(fieldName, clientValue, procurementValue, additionalInfo = null) {
+        const field = findFieldElement(fieldName);
+        if (field && field.valueElement) {
+            field.valueElement.classList.remove('highlight', 'match', 'warning');
+
+            let tooltipText = procurementValue === 'Нет данных' ? 'Не удалось получить данные с сайта гос. закупок' : 'На сайте гос. закупок: ' + procurementValue;
+            if (additionalInfo !== null && fieldName === 'Сумма БГ') tooltipText += ` (${additionalInfo}% от цены контракта)`;
+
+            if (fieldName === 'Аванс') {
+                if (clientValue === 'Нет' && procurementValue === 'Нет данных') {
+                    field.valueElement.classList.add('match');
+                    field.valueElement.title = 'На сайте гос. закупок аванс не указан';
+                } else if (clientValue === 'Нет' && procurementValue !== 'Нет данных') {
+                    field.valueElement.classList.add('highlight');
+                    field.valueElement.title = 'На сайте гос. закупок указан аванс: ' + procurementValue;
+                } else if (clientValue !== 'Нет' && procurementValue === 'Нет данных') {
+                    field.valueElement.classList.add('warning');
+                    field.valueElement.title = 'Не удалось проверить аванс на сайте гос. закупок';
+                } else {
+                    const clientPercent = parseFloat(clientValue.replace('%', '').trim());
+                    const procurementPercent = parseFloat(procurementValue.replace('%', '').replace(',', '.').trim());
+                    if (clientPercent === procurementPercent) {
+                        field.valueElement.classList.add('match');
+                        field.valueElement.title = 'Процент аванса совпадает: ' + procurementValue;
+                    } else {
+                        field.valueElement.classList.add('highlight');
+                        field.valueElement.title = 'Процент аванса отличается: ' + procurementValue;
+                    }
+                }
+            } else {
+                if (clientValue === procurementValue) {
+                    field.valueElement.classList.add('match');
+                    field.valueElement.title = 'Совпадает с сайтом гос. закупок: ' + procurementValue;
+                } else if (procurementValue === 'Нет данных') {
+                    field.valueElement.classList.add('warning');
+                    field.valueElement.title = tooltipText;
+                } else {
+                    field.valueElement.classList.add('highlight');
+                    field.valueElement.title = tooltipText;
+                }
+            }
+        }
+    }
+
+    // ==================== Инициализация ====================
     if (window.location.href.includes('https://crm.finleo.ru/orders/')) {
         log('Инициализация на сайте CRM Finleo');
         createToggleSwitch();
+        createComparisonButton();
 
         const saveProfileBtn = document.createElement('button');
         saveProfileBtn.className = 'tm-control-btn tm-profile-btn';
