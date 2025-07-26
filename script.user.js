@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автозаполнение заявки 
 // @namespace    http://tampermonkey.net/
-// @version      8.0
+// @version      8.1
 // @description  Заполнение форм 
 // @match        https://crm.finleo.ru/orders/*
 // @match        https://market.bg.ingobank.ru/tasks*
