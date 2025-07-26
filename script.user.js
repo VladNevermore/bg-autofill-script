@@ -690,7 +690,7 @@
 
         const profileBtn = document.createElement('button');
         profileBtn.className = 'tm-control-btn tm-profile-btn';
-        profileBtn.textContent = 'Заполнить анкету';
+        profileBtn.textContent = 'Заполнить чтоооо';
         profileBtn.style.bottom = '150px';
         profileBtn.onclick = fillProfileInFirstBank;
         document.body.appendChild(profileBtn);
