@@ -11,8 +11,8 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_addStyle
-// @updateURL    https://raw.githubusercontent.com/yourusername/yourrepo/main/script.user.js
-// @downloadURL  https://raw.githubusercontent.com/yourusername/yourrepo/main/script.user.js
+// @updateURL    https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script.user.js
+// @downloadURL  https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script.user.js
 // ==/UserScript==
 
 (function() {
