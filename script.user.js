@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Автозаполнение и проверка параметров
 // @namespace    http://tampermonkey.net/
-// @version      9.1
-// @description  Автозаполнение форм и сравнение параметров
+// @version      9.2
+// @description  Автозаполнение и сравнение параметров
 // @match        https://crm.finleo.ru/orders/*
 // @match        https://market.bg.ingobank.ru/tasks*
 // @match        https://bg.realistbank.ru/new_ticket*
@@ -12,16 +12,14 @@
 // @grant        GM_getValue
 // @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
-// @updateURL    https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script.user.js
-// @downloadURL  https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script.user.js
+// @updateURL    https://raw.githubusercontent.com/yourusername/yourrepo/main/script.user.js
+// @downloadURL  https://raw.githubusercontent.com/yourusername/yourrepo/main/script.user.js
 // ==/UserScript==
 
 (function() {
     'use strict';
 
-    // Общие стили для обоих функционалов
     GM_addStyle(`
-        /* Стили для автозаполнения */
         .tm-control-btn {
             position: fixed;
             z-index: 9999;
@@ -45,10 +43,11 @@
         .tm-fast-btn { background: #FF5722; color: white; bottom: 200px; right: 20px; }
         .tm-like-btn { background: #FF9800; color: white; bottom: 260px; right: 20px; }
         .tm-realist-btn { background: #607D8B; color: white; bottom: 320px; right: 20px; }
+        .tm-compare-btn { background: #17a2b8; color: white; bottom: 380px; right: 20px; }
         .tm-status {
             position: fixed;
             z-index: 9998;
-            bottom: 380px;
+            bottom: 440px;
             right: 20px;
             background: #333;
             color: white;
@@ -112,7 +111,6 @@
         input:checked + .tm-toggle-slider { background-color: #2196F3; }
         input:checked + .tm-toggle-slider:before { transform: translateX(20px); }
 
-        /* Стили для проверки параметров */
         .highlight {
             background-color: #fff3cd !important;
             color: #856404 !important;
@@ -134,31 +132,8 @@
             padding: 2px 5px !important;
             border-radius: 4px !important;
         }
-        .comparison-container {
-            position: fixed;
-            top: 210px;
-            right: 10px;
-            z-index: 10000;
-            background-color: white;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            display: flex;
-            align-items: center;
-        }
-        .comparison-container button {
-            padding: 5px 10px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            margin-left: 10px;
-        }
     `);
 
-    // ==================== Функционал автозаполнения ====================
     const log = (message, data = null) => {
         console.log(`[BG Script] ${message}`, data || '');
     };
@@ -343,25 +318,30 @@
         document.body.appendChild(container);
     };
 
-    // ==================== Функционал проверки параметров ====================
     function createComparisonButton() {
-        const container = document.createElement('div');
-        container.className = 'comparison-container';
-
         const button = document.createElement('button');
+        button.className = 'tm-control-btn tm-compare-btn';
         button.textContent = 'Сравнить параметры';
 
         button.addEventListener('click', () => {
-            const linkElement = document.querySelector('.sc-gIFmxT.eRwsKd .sc-dGJnDi.jHPrMj a');
-            if (linkElement && linkElement.href) {
-                compareParameters(linkElement.href);
+            const linkContainer = Array.from(document.querySelectorAll('.sc-gIFmxT.eRwsKd')).find(container => {
+                const title = container.querySelector('.sc-koiXkd.eeqzUV');
+                return title && title.textContent.trim() === 'Ссылка';
+            });
+            
+            if (linkContainer) {
+                const linkElement = linkContainer.querySelector('a');
+                if (linkElement && linkElement.href) {
+                    compareParameters(linkElement.href);
+                } else {
+                    alert('Ссылка на закупку не найдена');
+                }
             } else {
-                alert('Не найдена ссылка на закупку на странице');
+                alert('Блок со ссылкой не найден');
             }
         });
 
-        container.appendChild(button);
-        document.body.appendChild(container);
+        document.body.appendChild(button);
     }
 
     async function compareParameters(procurementUrl) {
@@ -478,67 +458,71 @@
                 method: 'GET',
                 url: url,
                 onload: function(response) {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(response.responseText, 'text/html');
+                    try {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(response.responseText, 'text/html');
 
-                    const noticeNumberElement = doc.querySelector('.cardMainInfo__purchaseLink a');
-                    const noticeNumber = noticeNumberElement ? noticeNumberElement.textContent.trim().replace(/№\s*/g, '') : 'Нет данных';
+                        const noticeNumberElement = doc.querySelector('.cardMainInfo__purchaseLink a');
+                        const noticeNumber = noticeNumberElement ? noticeNumberElement.textContent.trim().replace(/№\s*/g, '') : 'Нет данных';
 
-                    const purchaseSubjectElement = doc.querySelector('.cardMainInfo__section span.cardMainInfo__content');
-                    const purchaseSubject = purchaseSubjectElement ? purchaseSubjectElement.textContent.trim() : 'Нет данных';
+                        const purchaseSubjectElement = doc.querySelector('.cardMainInfo__section span.cardMainInfo__content');
+                        const purchaseSubject = purchaseSubjectElement ? purchaseSubjectElement.textContent.trim() : 'Нет данных';
 
-                    const maxPriceElement = doc.querySelector('.price .cardMainInfo__content.cost');
-                    let maxPrice = maxPriceElement ? maxPriceElement.textContent.trim().replace(/\s/g, '') : 'Нет данных';
-                    let maxPriceValue = maxPrice !== 'Нет данных' ? parseFloat(maxPrice.replace(/\s/g, '').replace(',', '.')) : 0;
+                        const maxPriceElement = doc.querySelector('.price .cardMainInfo__content.cost');
+                        let maxPrice = maxPriceElement ? maxPriceElement.textContent.trim().replace(/\s/g, '') : 'Нет данных';
+                        let maxPriceValue = maxPrice !== 'Нет данных' ? parseFloat(maxPrice.replace(/\s/g, '').replace(',', '.')) : 0;
 
-                    let bidSecurityAmount = 'Нет данных';
-                    const bidSecuritySection = findSectionByTitle(doc, 'Размер обеспечения заявки');
-                    if (bidSecuritySection) bidSecurityAmount = cleanAmountText(bidSecuritySection.querySelector('.section__info').textContent.trim());
+                        let bidSecurityAmount = 'Нет данных';
+                        const bidSecuritySection = findSectionByTitle(doc, 'Размер обеспечения заявки');
+                        if (bidSecuritySection) bidSecurityAmount = cleanAmountText(bidSecuritySection.querySelector('.section__info').textContent.trim());
 
-                    let contractSecurityAmount = 'Нет данных';
-                    let guaranteePercent = null;
-                    const contractSecuritySection = findSectionByTitle(doc, 'Размер обеспечения исполнения контракта');
-                    if (contractSecuritySection) {
-                        const guaranteeText = contractSecuritySection.querySelector('.section__info').textContent.trim();
-                        contractSecurityAmount = guaranteeText.split('\n')[0].trim();
-                        const percentMatch = contractSecurityAmount.match(/(\d+(?:,\d+)?)\s*%/);
-                        if (percentMatch) {
-                            guaranteePercent = parseFloat(percentMatch[1].replace(',', '.'));
-                            if (!isNaN(guaranteePercent) && maxPriceValue > 0) {
-                                const calculatedAmount = (maxPriceValue * guaranteePercent) / 100;
-                                contractSecurityAmount = new Intl.NumberFormat('ru-RU').format(calculatedAmount) + ' руб.';
+                        let contractSecurityAmount = 'Нет данных';
+                        let guaranteePercent = null;
+                        const contractSecuritySection = findSectionByTitle(doc, 'Размер обеспечения исполнения контракта');
+                        if (contractSecuritySection) {
+                            const guaranteeText = contractSecuritySection.querySelector('.section__info').textContent.trim();
+                            contractSecurityAmount = guaranteeText.split('\n')[0].trim();
+                            const percentMatch = contractSecurityAmount.match(/(\d+(?:,\d+)?)\s*%/);
+                            if (percentMatch) {
+                                guaranteePercent = parseFloat(percentMatch[1].replace(',', '.'));
+                                if (!isNaN(guaranteePercent) && maxPriceValue > 0) {
+                                    const calculatedAmount = (maxPriceValue * guaranteePercent) / 100;
+                                    contractSecurityAmount = new Intl.NumberFormat('ru-RU').format(calculatedAmount) + ' руб.';
+                                }
                             }
                         }
+
+                        let warrantySecurityAmount = 'Нет данных';
+                        const warrantySecuritySection = findSectionByTitle(doc, 'Размер обеспечения гарантийных обязательств');
+                        if (warrantySecuritySection) warrantySecurityAmount = cleanAmountText(warrantySecuritySection.querySelector('.section__info').textContent.trim());
+
+                        let advancePayment = 'Нет данных';
+                        const advanceSection = findSectionByTitle(doc, 'Размер аванса');
+                        if (advanceSection) advancePayment = advanceSection.querySelector('.section__info').textContent.trim();
+
+                        let applicationDeadline = 'Нет данных';
+                        const deadlineSection = findSectionByTitle(doc, 'Дата и время окончания срока подачи заявок');
+                        if (deadlineSection) applicationDeadline = deadlineSection.querySelector('.section__info').textContent.replace(/\([^)]+\)/g, '').trim();
+
+                        let contractPeriod = 'Нет данных';
+                        const contractSection = findSectionByTitle(doc, 'Срок исполнения контракта');
+                        if (contractSection) contractPeriod = contractSection.querySelector('.section__info').textContent.trim().split('\n')[0].trim();
+
+                        resolve({
+                            purchaseSubject: purchaseSubject,
+                            maxPrice: maxPrice,
+                            bidSecurityAmount: bidSecurityAmount,
+                            contractSecurityAmount: contractSecurityAmount,
+                            warrantySecurityAmount: warrantySecurityAmount,
+                            advancePayment: advancePayment,
+                            noticeNumber: noticeNumber,
+                            applicationDeadline: applicationDeadline,
+                            contractPeriod: contractPeriod,
+                            guaranteePercent: guaranteePercent
+                        });
+                    } catch (e) {
+                        reject(e);
                     }
-
-                    let warrantySecurityAmount = 'Нет данных';
-                    const warrantySecuritySection = findSectionByTitle(doc, 'Размер обеспечения гарантийных обязательств');
-                    if (warrantySecuritySection) warrantySecurityAmount = cleanAmountText(warrantySecuritySection.querySelector('.section__info').textContent.trim());
-
-                    let advancePayment = 'Нет данных';
-                    const advanceSection = findSectionByTitle(doc, 'Размер аванса');
-                    if (advanceSection) advancePayment = advanceSection.querySelector('.section__info').textContent.trim();
-
-                    let applicationDeadline = 'Нет данных';
-                    const deadlineSection = findSectionByTitle(doc, 'Дата и время окончания срока подачи заявок');
-                    if (deadlineSection) applicationDeadline = deadlineSection.querySelector('.section__info').textContent.replace(/\([^)]+\)/g, '').trim();
-
-                    let contractPeriod = 'Нет данных';
-                    const contractSection = findSectionByTitle(doc, 'Срок исполнения контракта');
-                    if (contractSection) contractPeriod = contractSection.querySelector('.section__info').textContent.trim().split('\n')[0].trim();
-
-                    resolve({
-                        purchaseSubject: purchaseSubject,
-                        maxPrice: maxPrice,
-                        bidSecurityAmount: bidSecurityAmount,
-                        contractSecurityAmount: contractSecurityAmount,
-                        warrantySecurityAmount: warrantySecurityAmount,
-                        advancePayment: advancePayment,
-                        noticeNumber: noticeNumber,
-                        applicationDeadline: applicationDeadline,
-                        contractPeriod: contractPeriod,
-                        guaranteePercent: guaranteePercent
-                    });
                 },
                 onerror: function(error) {
                     reject(error);
@@ -557,6 +541,18 @@
 
     function cleanAmountText(text) {
         return text.replace(/[^\d,.]/g, '').replace(/\s/g, '').replace(',', '.');
+    }
+
+    function findFieldElement(fieldName) {
+        const containers = document.querySelectorAll('.sc-gIFmxT.eRwsKd');
+        for (const container of containers) {
+            const titleElement = container.querySelector('.sc-koiXkd.eeqzUV');
+            if (titleElement && titleElement.textContent.trim() === fieldName) {
+                const valueElement = container.querySelector('.sc-dGJnDi.jHPrMj');
+                return { container, titleElement, valueElement };
+            }
+        }
+        return null;
     }
 
     function getClientData() {
@@ -630,7 +626,6 @@
         }
     }
 
-    // ==================== Инициализация ====================
     if (window.location.href.includes('https://crm.finleo.ru/orders/')) {
         log('Инициализация на сайте CRM Finleo');
         createToggleSwitch();
