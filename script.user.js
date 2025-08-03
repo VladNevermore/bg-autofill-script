@@ -1,11 +1,12 @@
 // ==UserScript==
-// @name         Автозаполнение и проверка параметров
+// @name         Автозаполнение и проверка параметров // dev
 // @namespace    http://tampermonkey.net/
-// @version      9.2
+// @version      9.3
 // @description  Автозаполнение и сравнение параметров
 // @match        https://crm.finleo.ru/orders/*
 // @match        https://market.bg.ingobank.ru/tasks*
 // @match        https://bg.realistbank.ru/new_ticket*
+// @match        https://bg.alfabank.ru/aft-ui/orders*
 // @author       VladNevermore
 // @icon         https://i.pinimg.com/736x/78/53/ad/7853ade6dd49b8caba4d1037e7341323.jpg
 // @grant        GM_setValue
@@ -1121,4 +1122,160 @@
         realistBtn.onclick = fillRealistBankForm;
         document.body.appendChild(realistBtn);
     }
+    if (window.location.href.includes('bg.alfabank.ru/aft-ui/orders')) {
+        log('Инициализация на сайте Альфа-Банка');
+        createToggleSwitch();
+
+        const waitForElement = (selector, timeout = 15000) => {
+            log(`Ожидание элемента: ${selector}`);
+            return new Promise((resolve, reject) => {
+                const start = Date.now();
+                const check = () => {
+                    const el = document.querySelector(selector);
+                    if (el) {
+                        log(`Элемент найден: ${selector}`);
+                        return resolve(el);
+                    }
+                    if (Date.now() - start > timeout) {
+                        log(`Таймаут ожидания элемента: ${selector}`);
+                        return reject(new Error(`Элемент не найден: ${selector}`));
+                    }
+                    requestAnimationFrame(check);
+                };
+                check();
+            });
+        };
+
+        const fillField = async (selector, value) => {
+            log(`Заполнение поля ${selector} значением: ${value}`);
+            const field = await waitForElement(selector);
+            field.value = value;
+            field.dispatchEvent(new Event('input', {bubbles: true}));
+            await new Promise(r => setTimeout(r, 300));
+        };
+
+        const clickElement = async (selector) => {
+            log(`Клик по элементу: ${selector}`);
+            const element = await waitForElement(selector);
+            element.click();
+            await new Promise(r => setTimeout(r, 500));
+        };
+
+        const selectFirstOption = async () => {
+            try {
+                log('Попытка выбрать первый вариант из списка');
+                const firstOption = await waitForElement('.suggestions-suggestion', 3000);
+                firstOption.click();
+                log('Первый вариант выбран');
+                return true;
+            } catch (error) {
+                log(`Ошибка при выборе варианта: ${error.message}`);
+                return false;
+            }
+        };
+
+        const fillAlfabankForm = async () => {
+            log('Начало заполнения формы в Альфа-Банке');
+            const data = GM_getValue('bankRequestData', null);
+            if (!data || !data.inn) {
+                log('Ошибка: Нет сохраненных данных или ИНН');
+                showStatus('❌ Нет сохраненных данных', 5000);
+                return;
+            }
+
+            const status = showStatus('⏳ Начинаем заполнение в Альфа-Банке...', null);
+            const phoneNumber = "79253526319";
+            const email = "b.documents@bk.ru";
+
+            try {
+                status.textContent = '⏳ Вводим ИНН...';
+                const innInput = await waitForElement('input[data-test-id="principal-field"]');
+                innInput.value = data.inn;
+                innInput.dispatchEvent(new Event('input', {bubbles: true}));
+                await new Promise(r => setTimeout(r, 1500));
+
+                await selectFirstOption();
+
+                status.textContent = '⏳ Выбираем тип гарантии...';
+                await clickElement('div[data-test-id="bankGuaranteeType"]');
+                await new Promise(r => setTimeout(r, 500));
+
+                let guaranteeType;
+                if (data.guaranteeInfo.bank2Type === 'PART') {
+                    guaranteeType = 'Обеспечение заявки на участие в торгах';
+                } else if (data.guaranteeInfo.bank2Type === 'EXEC') {
+                    guaranteeType = 'Обеспечение исполнения обязательств по контракту';
+                } else if (data.guaranteeInfo.bank2Type === 'GARANT') {
+                    guaranteeType = 'Обеспечение гарантийного периода';
+                } else {
+                    guaranteeType = 'Обеспечение заявки на участие в торгах';
+                }
+
+                const options = Array.from(document.querySelectorAll('.select__option_199of'));
+                const targetOption = options.find(opt => 
+                    opt.textContent.includes(guaranteeType)
+                );
+
+                if (targetOption) {
+                    targetOption.click();
+                } else {
+                    throw new Error(`Не найден тип гарантии: ${guaranteeType}`);
+                }
+
+                status.textContent = '⏳ Вводим номер извещения...';
+                await fillField('input[data-test-id="tradeNumber"]', data.notice);
+
+                status.textContent = '⏳ Выбираем реестр ЕИС...';
+                await clickElement('div[data-test-id="publicationRegistry"]');
+                await new Promise(r => setTimeout(r, 500));
+                await clickElement('div[data-test-id="publicationRegistry-option"]:first-child');
+
+                status.textContent = '⏳ Вводим цену...';
+                const priceValue = data.guaranteeInfo.priceField === 'Предложенная цена' ? 
+                    data.proposedPrice : data.initialPrice;
+                await fillField('input[data-test-id="finalAmount"]', priceValue);
+
+                status.textContent = '⏳ Вводим дату окончания...';
+                await fillField('input[data-test-id="guaranteeDateRange.to"]', data.endDate);
+
+                status.textContent = '⏳ Редактируем бенефициара...';
+                await clickElement('button[data-test-id="beneficiaries.[0].editButton"]');
+
+                status.textContent = '⏳ Вводим сумму БГ...';
+                await fillField('input[data-test-id="beneficiaries[0].bgAmount"]', data.sum);
+
+                status.textContent = '⏳ Вводим телефон...';
+                await fillField('input[data-test-id="beneficiaries[0].phone"]', phoneNumber);
+
+                status.textContent = '⏳ Вводим email...';
+                await fillField('input[data-test-id="beneficiaries[0].email"]', email);
+
+                status.textContent = '✅ Форма Альфа-Банка заполнена! Проверьте данные';
+                log('Форма Альфа-Банка успешно заполнена');
+                setTimeout(() => status.remove(), 5000);
+
+            } catch (error) {
+                log(`Ошибка при заполнении формы Альфа-Банка: ${error.message}`, error);
+                status.textContent = `❌ Ошибка: ${error.message || error}`;
+                setTimeout(() => status.remove(), 5000);
+            }
+        };
+
+        const alfabankBtn = document.createElement('button');
+        alfabankBtn.className = 'tm-control-btn tm-alfabank-btn';
+        alfabankBtn.textContent = 'Заполнить АльфаБанк';
+        alfabankBtn.style.backgroundColor = '#EF3124';
+        alfabankBtn.onclick = fillAlfabankForm;
+        document.body.appendChild(alfabankBtn);
+
+        GM_addStyle(`
+            .tm-alfabank-btn {
+                background: #EF3124 !important;
+                color: white !important;
+                bottom: 380px !important;
+                right: 20px !important;
+            }
+        `);
+    }
+})();
 })();
