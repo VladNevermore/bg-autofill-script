@@ -1,5 +1,4 @@
-import fs from "fs";
-import path from "path";
+import esbuild from "esbuild";
 
 const header = `// ==UserScript==
 // @name         Автозаполнение и проверка параметров
@@ -14,29 +13,24 @@ const header = `// ==UserScript==
 // @grant        GM_xmlhttpRequest
 // @updateURL    https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script.user.js
 // @downloadURL  https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script.user.js
-// ==/UserScript==
+// ==/UserScript==`;
 
-`;
+(async () => {
+  try {
+    await esbuild.build({
+      entryPoints: ["src/main.js"],
+      bundle: true,
+      outfile: "script.user.js",
+      format: "iife",
+      banner: { js: header }, 
+      target: ["es2020"],
+      charset: "utf8",
+      minify: false, 
+    });
 
-function readDirRecursive(dir) {
-  let files = [];
-  for (const file of fs.readdirSync(dir)) {
-    const fullPath = path.join(dir, file);
-    if (fs.statSync(fullPath).isDirectory()) {
-      files = files.concat(readDirRecursive(fullPath));
-    } else if (fullPath.endsWith(".js")) {
-      files.push(fullPath);
-    }
+    console.log("✅ script.user.js успешно создан!");
+  } catch (e) {
+    console.error("❌ Ошибка сборки:", e);
+    process.exit(1);
   }
-  return files;
-}
-
-const srcDir = path.resolve("src");
-const files = readDirRecursive(srcDir).sort();
-let content = "";
-for (const file of files) {
-  content += fs.readFileSync(file, "utf-8") + "\n\n";
-}
-
-fs.writeFileSync("script.user.js", header + content);
-console.log("✅ script.user.js создан!");
+})();
