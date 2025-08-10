@@ -5,6 +5,9 @@
 // @description  Автозаполнение и сравнение параметров
 // @match        https://crm.finleo.ru/orders/*
 // @match        https://market.bg.ingobank.ru/tasks*
+// @match        https://bg.realistbank.ru/new_ticket*
+// @author       VladNevermore
+// @icon         https://i.pinimg.com/736x/78/53/ad/7853ade6dd49b8caba4d1037e7341323.jpg
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_addStyle
