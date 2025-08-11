@@ -44,12 +44,11 @@
         .tm-fast-btn { background: #FF5722; color: white; bottom: 200px; right: 20px; }
         .tm-like-btn { background: #FF9800; color: white; bottom: 260px; right: 20px; }
         .tm-realist-btn { background: #607D8B; color: white; bottom: 320px; right: 20px; }
-        .tm-alfabank-btn { background: #EF3124 !important; color: white; bottom: 380px; right: 20px; }
-        .tm-tbank-btn { background: #1E88E5 !important; color: white; bottom: 440px; right: 20px; }
+        .tm-compare-btn { background: #17a2b8; color: white; bottom: 380px; right: 20px; }
         .tm-status {
             position: fixed;
             z-index: 9998;
-            bottom: 500px;
+            bottom: 440px;
             right: 20px;
             background: #333;
             color: white;
@@ -134,27 +133,11 @@
             padding: 2px 5px !important;
             border-radius: 4px !important;
         }
-        .comparison-container {
-            position: fixed;
-            top: 210px;
-            right: 10px;
-            z-index: 10000;
-            background-color: white;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            display: flex;
-            align-items: center;
-        }
-        .comparison-container button {
-            padding: 5px 10px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            margin-left: 10px;
+        .tm-alfabank-btn {
+            background: #EF3124 !important;
+            color: white !important;
+            bottom: 380px !important;
+            right: 20px !important;
         }
     `);
 
@@ -222,21 +205,38 @@
         };
     };
 
-    const findValueBySelector = (selector) => {
-        const element = document.querySelector(selector);
-        return element ? element.textContent.trim() : '';
+    const findFieldByLabel = (labelText) => {
+        log(`Поиск поля по метке: ${labelText}`);
+        const containers = document.querySelectorAll('div.sc-dffb1fbd-0');
+        for (const container of containers) {
+            const titleDiv = container.querySelector('div.sc-dffb1fbd-2');
+            if (titleDiv && titleDiv.textContent.trim() === labelText) {
+                const valueDiv = container.querySelector('div.sc-dffb1fbd-3');
+                if (valueDiv) {
+                    return valueDiv.textContent.trim();
+                }
+            }
+        }
+        log(`Метка '${labelText}' не найдена`);
+        return null;
     };
 
     const getInn = () => {
-        const innElement = document.querySelector('span.sc-bRKDuR.brGGka');
+        const innElement = document.querySelector('span.sc-bRKDuR');
         if (innElement) {
             const innMatch = innElement.textContent.match(/\d{10,12}/);
-            if (innMatch) return innMatch[0];
+            if (innMatch) {
+                const inn = innMatch[0];
+                log(`Получен ИНН: ${inn}`);
+                return inn;
+            }
         }
+        log('ИНН не найден');
         return '';
     };
 
     const getGuaranteeType = (needText) => {
+        log(`Определение типа гарантии для: ${needText}`);
         if (!needText) return {
             ingoType: '0',
             bank2Type: 'PART',
@@ -245,7 +245,8 @@
             proposedPriceField: 'Начальная цена'
         };
 
-        if (needText.includes('участие') || needText.includes('заявки')) {
+        if (needText.includes('БГ на участие')) {
+            log('Тип гарантии: БГ на участие');
             return {
                 ingoType: '0',
                 bank2Type: 'PART',
@@ -253,7 +254,8 @@
                 priceField: 'Начальная цена',
                 proposedPriceField: 'Начальная цена'
             };
-        } else if (needText.includes('исполн') || needText.includes('контракт')) {
+        } else if (needText.includes('БГ на исполнение')) {
+            log('Тип гарантии: БГ на исполнение');
             return {
                 ingoType: '1',
                 bank2Type: 'EXEC',
@@ -261,7 +263,8 @@
                 priceField: 'Предложенная цена',
                 proposedPriceField: 'Предложенная цена'
             };
-        } else if (needText.includes('гарантий') || needText.includes('гаранти')) {
+        } else if (needText.includes('БГ на гарантийный срок')) {
+            log('Тип гарантии: БГ на гарантийный срок');
             return {
                 ingoType: '2',
                 bank2Type: 'GARANT',
@@ -271,6 +274,7 @@
             };
         }
 
+        log('Тип гарантии не распознан, используется значение по умолчанию');
         return {
             ingoType: '0',
             bank2Type: 'PART',
@@ -281,6 +285,7 @@
     };
 
     const createToggleSwitch = () => {
+        log('Создание переключателя кнопок');
         const container = document.createElement('div');
         container.className = 'tm-toggle-container';
 
@@ -304,6 +309,7 @@
         container.appendChild(switchContainer);
 
         checkbox.addEventListener('change', function() {
+            log(`Переключатель кнопок: ${this.checked ? 'включен' : 'выключен'}`);
             const buttons = document.querySelectorAll('.tm-control-btn, .tm-status');
             buttons.forEach(btn => {
                 btn.style.display = this.checked ? 'block' : 'none';
@@ -314,23 +320,30 @@
     };
 
     function createComparisonButton() {
-        const container = document.createElement('div');
-        container.className = 'comparison-container';
-
         const button = document.createElement('button');
+        button.className = 'tm-control-btn tm-compare-btn';
         button.textContent = 'Сравнить параметры';
 
         button.addEventListener('click', () => {
-            const linkElement = document.querySelector('div.sc-cOpnSz.deEArZ a');
+            const containers = document.querySelectorAll('div.sc-dffb1fbd-0');
+            let linkElement = null;
+            
+            for (const container of containers) {
+                const titleDiv = container.querySelector('div.sc-dffb1fbd-2');
+                if (titleDiv && titleDiv.textContent.trim() === 'Ссылка') {
+                    linkElement = container.querySelector('a');
+                    break;
+                }
+            }
+            
             if (linkElement && linkElement.href) {
                 compareParameters(linkElement.href);
             } else {
-                alert('Не найдена ссылка на закупку на странице');
+                alert('Ссылка на закупку не найдена');
             }
         });
 
-        container.appendChild(button);
-        document.body.appendChild(container);
+        document.body.appendChild(button);
     }
 
     async function compareParameters(procurementUrl) {
@@ -361,9 +374,9 @@
 
     function getRequirementType(requirementText) {
         if (!requirementText) return 'unknown';
-        if (requirementText.includes('участие') || requirementText.includes('заявки')) return 'participation';
-        if (requirementText.includes('исполн') || requirementText.includes('контракт')) return 'execution';
-        if (requirementText.includes('гарантий') || requirementText.includes('гаранти')) return 'warranty';
+        if (requirementText.includes('БГ на участие') || requirementText.includes('Обеспечение заявки')) return 'participation';
+        if (requirementText.includes('БГ на исполнение') || requirementText.includes('Обеспечение исполнения')) return 'execution';
+        if (requirementText.includes('БГ на гарантийный срок') || requirementText.includes('Гарантийные обязательства')) return 'warranty';
         return 'unknown';
     }
 
@@ -447,67 +460,71 @@
                 method: 'GET',
                 url: url,
                 onload: function(response) {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(response.responseText, 'text/html');
+                    try {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(response.responseText, 'text/html');
 
-                    const noticeNumberElement = doc.querySelector('.cardMainInfo__purchaseLink a');
-                    const noticeNumber = noticeNumberElement ? noticeNumberElement.textContent.trim().replace(/№\s*/g, '') : 'Нет данных';
+                        const noticeNumberElement = doc.querySelector('.cardMainInfo__purchaseLink a');
+                        const noticeNumber = noticeNumberElement ? noticeNumberElement.textContent.trim().replace(/№\s*/g, '') : 'Нет данных';
 
-                    const purchaseSubjectElement = doc.querySelector('.cardMainInfo__section span.cardMainInfo__content');
-                    const purchaseSubject = purchaseSubjectElement ? purchaseSubjectElement.textContent.trim() : 'Нет данных';
+                        const purchaseSubjectElement = doc.querySelector('.cardMainInfo__section span.cardMainInfo__content');
+                        const purchaseSubject = purchaseSubjectElement ? purchaseSubjectElement.textContent.trim() : 'Нет данных';
 
-                    const maxPriceElement = doc.querySelector('.price .cardMainInfo__content.cost');
-                    let maxPrice = maxPriceElement ? maxPriceElement.textContent.trim().replace(/\s/g, '') : 'Нет данных';
-                    let maxPriceValue = maxPrice !== 'Нет данных' ? parseFloat(maxPrice.replace(/\s/g, '').replace(',', '.')) : 0;
+                        const maxPriceElement = doc.querySelector('.price .cardMainInfo__content.cost');
+                        let maxPrice = maxPriceElement ? maxPriceElement.textContent.trim().replace(/\s/g, '') : 'Нет данных';
+                        let maxPriceValue = maxPrice !== 'Нет данных' ? parseFloat(maxPrice.replace(/\s/g, '').replace(',', '.')) : 0;
 
-                    let bidSecurityAmount = 'Нет данных';
-                    const bidSecuritySection = findSectionByTitle(doc, 'Размер обеспечения заявки');
-                    if (bidSecuritySection) bidSecurityAmount = cleanAmountText(bidSecuritySection.querySelector('.section__info').textContent.trim());
+                        let bidSecurityAmount = 'Нет данных';
+                        const bidSecuritySection = findSectionByTitle(doc, 'Размер обеспечения заявки');
+                        if (bidSecuritySection) bidSecurityAmount = cleanAmountText(bidSecuritySection.querySelector('.section__info').textContent.trim());
 
-                    let contractSecurityAmount = 'Нет данных';
-                    let guaranteePercent = null;
-                    const contractSecuritySection = findSectionByTitle(doc, 'Размер обеспечения исполнения контракта');
-                    if (contractSecuritySection) {
-                        const guaranteeText = contractSecuritySection.querySelector('.section__info').textContent.trim();
-                        contractSecurityAmount = guaranteeText.split('\n')[0].trim();
-                        const percentMatch = contractSecurityAmount.match(/(\d+(?:,\d+)?)\s*%/);
-                        if (percentMatch) {
-                            guaranteePercent = parseFloat(percentMatch[1].replace(',', '.'));
-                            if (!isNaN(guaranteePercent) && maxPriceValue > 0) {
-                                const calculatedAmount = (maxPriceValue * guaranteePercent) / 100;
-                                contractSecurityAmount = new Intl.NumberFormat('ru-RU').format(calculatedAmount) + ' руб.';
+                        let contractSecurityAmount = 'Нет данных';
+                        let guaranteePercent = null;
+                        const contractSecuritySection = findSectionByTitle(doc, 'Размер обеспечения исполнения контракта');
+                        if (contractSecuritySection) {
+                            const guaranteeText = contractSecuritySection.querySelector('.section__info').textContent.trim();
+                            contractSecurityAmount = guaranteeText.split('\n')[0].trim();
+                            const percentMatch = contractSecurityAmount.match(/(\d+(?:,\d+)?)\s*%/);
+                            if (percentMatch) {
+                                guaranteePercent = parseFloat(percentMatch[1].replace(',', '.'));
+                                if (!isNaN(guaranteePercent) && maxPriceValue > 0) {
+                                    const calculatedAmount = (maxPriceValue * guaranteePercent) / 100;
+                                    contractSecurityAmount = new Intl.NumberFormat('ru-RU').format(calculatedAmount) + ' руб.';
+                                }
                             }
                         }
+
+                        let warrantySecurityAmount = 'Нет данных';
+                        const warrantySecuritySection = findSectionByTitle(doc, 'Размер обеспечения гарантийных обязательств');
+                        if (warrantySecuritySection) warrantySecurityAmount = cleanAmountText(warrantySecuritySection.querySelector('.section__info').textContent.trim());
+
+                        let advancePayment = 'Нет данных';
+                        const advanceSection = findSectionByTitle(doc, 'Размер аванса');
+                        if (advanceSection) advancePayment = advanceSection.querySelector('.section__info').textContent.trim();
+
+                        let applicationDeadline = 'Нет данных';
+                        const deadlineSection = findSectionByTitle(doc, 'Дата и время окончания срока подачи заявок');
+                        if (deadlineSection) applicationDeadline = deadlineSection.querySelector('.section__info').textContent.replace(/\([^)]+\)/g, '').trim();
+
+                        let contractPeriod = 'Нет данных';
+                        const contractSection = findSectionByTitle(doc, 'Срок исполнения контракта');
+                        if (contractSection) contractPeriod = contractSection.querySelector('.section__info').textContent.trim().split('\n')[0].trim();
+
+                        resolve({
+                            purchaseSubject: purchaseSubject,
+                            maxPrice: maxPrice,
+                            bidSecurityAmount: bidSecurityAmount,
+                            contractSecurityAmount: contractSecurityAmount,
+                            warrantySecurityAmount: warrantySecurityAmount,
+                            advancePayment: advancePayment,
+                            noticeNumber: noticeNumber,
+                            applicationDeadline: applicationDeadline,
+                            contractPeriod: contractPeriod,
+                            guaranteePercent: guaranteePercent
+                        });
+                    } catch (e) {
+                        reject(e);
                     }
-
-                    let warrantySecurityAmount = 'Нет данных';
-                    const warrantySecuritySection = findSectionByTitle(doc, 'Размер обеспечения гарантийных обязательств');
-                    if (warrantySecuritySection) warrantySecurityAmount = cleanAmountText(warrantySecuritySection.querySelector('.section__info').textContent.trim());
-
-                    let advancePayment = 'Нет данных';
-                    const advanceSection = findSectionByTitle(doc, 'Размер аванса');
-                    if (advanceSection) advancePayment = advanceSection.querySelector('.section__info').textContent.trim();
-
-                    let applicationDeadline = 'Нет данных';
-                    const deadlineSection = findSectionByTitle(doc, 'Дата и время окончания срока подачи заявок');
-                    if (deadlineSection) applicationDeadline = deadlineSection.querySelector('.section__info').textContent.replace(/\([^)]+\)/g, '').trim();
-
-                    let contractPeriod = 'Нет данных';
-                    const contractSection = findSectionByTitle(doc, 'Срок исполнения контракта');
-                    if (contractSection) contractPeriod = contractSection.querySelector('.section__info').textContent.trim().split('\n')[0].trim();
-
-                    resolve({
-                        purchaseSubject: purchaseSubject,
-                        maxPrice: maxPrice,
-                        bidSecurityAmount: bidSecurityAmount,
-                        contractSecurityAmount: contractSecurityAmount,
-                        warrantySecurityAmount: warrantySecurityAmount,
-                        advancePayment: advancePayment,
-                        noticeNumber: noticeNumber,
-                        applicationDeadline: applicationDeadline,
-                        contractPeriod: contractPeriod,
-                        guaranteePercent: guaranteePercent
-                    });
                 },
                 onerror: function(error) {
                     reject(error);
@@ -528,15 +545,33 @@
         return text.replace(/[^\d,.]/g, '').replace(/\s/g, '').replace(',', '.');
     }
 
+    function findFieldElement(fieldName) {
+        const containers = document.querySelectorAll('div.sc-dffb1fbd-0');
+        for (const container of containers) {
+            const titleDiv = container.querySelector('div.sc-dffb1fbd-2');
+            if (titleDiv && titleDiv.textContent.trim() === fieldName) {
+                const valueDiv = container.querySelector('div.sc-dffb1fbd-3');
+                return { container, titleDiv, valueElement: valueDiv };
+            }
+        }
+        return null;
+    }
+
     function getClientData() {
         function findValueByTitle(titleText) {
             const field = findFieldElement(titleText);
             return field && field.valueElement ? field.valueElement.textContent.trim() : 'Нет данных';
         }
 
-        const requirement = findValueBySelector('div.sc-dffb1fbd-3.ihfOKP');
-        const advanceElement = document.querySelector('div.sc-cOpnSz.deEArZ:last-child div.sc-dffb1fbd-3.ihfOKP div.sc-cOpnSz.dykekP span');
-        const advancePayment = advanceElement ? advanceElement.textContent.trim() : 'Нет данных';
+        const requirementField = findFieldElement('Потребность');
+        const requirement = requirementField && requirementField.valueElement ? requirementField.valueElement.textContent.trim() : 'Нет данных';
+
+        const advanceField = findFieldElement('Аванс');
+        let advancePayment = 'Нет данных';
+        if (advanceField && advanceField.valueElement) {
+            const advanceText = advanceField.valueElement.textContent.trim();
+            advancePayment = advanceText.includes('нет') ? 'Нет' : advanceText.split('/')[0].trim();
+        }
 
         return {
             purchaseSubject: findValueByTitle('Предмет контракта') || 'Нет данных',
@@ -547,20 +582,6 @@
             requirement: requirement,
             advancePayment: advancePayment
         };
-    }
-
-    function findFieldElement(titleText) {
-        const blocks = document.querySelectorAll('div.sc-cOpnSz.deEArZ');
-        for (const block of blocks) {
-            const title = block.querySelector('div.sc-dffb1fbd-3.ihfOKP');
-            if (title && title.textContent.includes(titleText)) {
-                return {
-                    container: block,
-                    valueElement: title
-                };
-            }
-        }
-        return null;
     }
 
     function compareAndHighlight(fieldName, clientValue, procurementValue, additionalInfo = null) {
@@ -608,6 +629,7 @@
     }
 
     if (window.location.href.includes('https://crm.finleo.ru/orders/')) {
+        log('Инициализация на сайте CRM Finleo');
         createToggleSwitch();
         createComparisonButton();
 
@@ -615,16 +637,17 @@
         saveProfileBtn.className = 'tm-control-btn tm-profile-btn';
         saveProfileBtn.textContent = 'Сохранить анкету';
         saveProfileBtn.onclick = () => {
-            const fio = findValueBySelector('div[data-test-id="fio"]');
-            const birthDate = findValueBySelector('div[data-test-id="birthDate"]');
-            const birthPlace = findValueBySelector('div[data-test-id="birthPlace"]');
-            const passportSeries = findValueBySelector('div[data-test-id="passportSeries"]');
-            const passportNumber = findValueBySelector('div[data-test-id="passportNumber"]');
-            const passportIssueDate = findValueBySelector('div[data-test-id="passportIssueDate"]');
-            const passportDepartmentCode = findValueBySelector('div[data-test-id="passportDepartmentCode"]');
-            const registrationAddress = findValueBySelector('div[data-test-id="registrationAddress"]');
-            const bik = findValueBySelector('div[data-test-id="bik"]');
-            const accountNumber = findValueBySelector('div[data-test-id="accountNumber"]');
+            log('Сохранение анкетных данных');
+            const fio = findFieldByLabel('ФИО:');
+            const birthDate = findFieldByLabel('Дата рождения:');
+            const birthPlace = findFieldByLabel('Место рождения:');
+            const passportSeries = findFieldByLabel('Серия паспорта:');
+            const passportNumber = findFieldByLabel('Номер паспорта:');
+            const passportIssueDate = findFieldByLabel('Дата выдачи:');
+            const passportDepartmentCode = findFieldByLabel('Код подразделения:');
+            const registrationAddress = findFieldByLabel('Адрес регистрации:');
+            const bik = findFieldByLabel('БИК:');
+            const accountNumber = findFieldByLabel('р/с:');
 
             const fioParts = splitFIO(fio);
 
@@ -645,6 +668,7 @@
             };
 
             GM_setValue('bankProfileData', profileData);
+            log('Анкетные данные сохранены', profileData);
             showStatus('✅ Анкетные данные сохранены!', 3000);
         };
         document.body.appendChild(saveProfileBtn);
@@ -653,18 +677,21 @@
         saveParamsBtn.className = 'tm-control-btn tm-save-btn';
         saveParamsBtn.textContent = 'Сохранить параметры';
         saveParamsBtn.onclick = () => {
+            log('Сохранение параметров заявки');
             const inn = getInn();
             if (!inn) {
+                log('Ошибка: ИНН не найден');
                 showStatus('❌ Не удалось получить ИНН', 3000);
                 return;
             }
 
-            const needText = findValueBySelector('div.sc-dffb1fbd-3.ihfOKP');
-            const notice = findValueBySelector('div.sc-cOpnSz.deEArZ:first-child div.sc-cOpnSz.dykekP span');
-            const initialPrice = findValueBySelector('div.sc-cOpnSz.deEArZ:nth-child(3) div.sc-dffb1fbd-3.ihfOKP');
-            const proposedPrice = findValueBySelector('div.sc-cOpnSz.deEArZ:nth-child(4) div.sc-dffb1fbd-3.ihfOKP');
-            const sum = findValueBySelector('div.sc-cOpnSz.deEArZ:nth-child(5) div.sc-dffb1fbd-3.ihfOKP');
-            const period = findValueBySelector('div.sc-cOpnSz.deEArZ:nth-child(6) div.sc-dffb1fbd-3.ihfOKP');
+            const needText = findFieldByLabel('Потребность');
+            const notice = findFieldByLabel('Номер извещения');
+            const initialPrice = findFieldByLabel('Начальная цена');
+            const proposedPrice = findFieldByLabel('Предложенная цена');
+            const sum = findFieldByLabel('Сумма БГ');
+            const period = findFieldByLabel('Срок');
+            const law = findFieldByLabel('Закон');
 
             const guaranteeInfo = getGuaranteeType(needText);
 
@@ -674,6 +701,7 @@
             const cleanSum = extractCleanPrice(sum);
             const startDate = extractStartDate(period || '');
             const endDate = extractEndDate(period || '');
+            const lawCode = extractLaw(law || '');
 
             const data = {
                 inn: inn,
@@ -683,6 +711,7 @@
                 endDate: endDate,
                 price: cleanPrice,
                 sum: cleanSum,
+                law: lawCode,
                 initialPrice: extractCleanPrice(initialPrice),
                 proposedPrice: extractCleanPrice(proposedPrice),
                 email: "b.documents@bk.ru",
@@ -690,21 +719,30 @@
             };
 
             GM_setValue('bankRequestData', data);
+            log('Параметры заявки сохранены', data);
             showStatus('✅ Параметры заявки сохранены!', 3000);
         };
         document.body.appendChild(saveParamsBtn);
     }
 
     if (window.location.href.includes('market.bg.ingobank.ru/tasks')) {
+        log('Инициализация на сайте Ingobank');
         createToggleSwitch();
 
         const waitForElement = (selector, timeout = 15000) => {
+            log(`Ожидание элемента: ${selector}`);
             return new Promise((resolve, reject) => {
                 const start = Date.now();
                 const check = () => {
                     const el = document.querySelector(selector);
-                    if (el) return resolve(el);
-                    if (Date.now() - start > timeout) return reject(new Error(`Элемент не найден: ${selector}`));
+                    if (el) {
+                        log(`Элемент найден: ${selector}`);
+                        return resolve(el);
+                    }
+                    if (Date.now() - start > timeout) {
+                        log(`Таймаут ожидания элемента: ${selector}`);
+                        return reject(new Error(`Элемент не найден: ${selector}`));
+                    }
                     requestAnimationFrame(check);
                 };
                 check();
@@ -712,6 +750,7 @@
         };
 
         const fillField = async (selector, value) => {
+            log(`Заполнение поля ${selector} значением: ${value}`);
             const field = await waitForElement(selector);
             field.value = value;
             field.dispatchEvent(new Event('input', {bubbles: true}));
@@ -719,6 +758,7 @@
         };
 
         const setSelectValue = async (selector, value) => {
+            log(`Установка значения селектора ${selector} в: ${value}`);
             const select = await waitForElement(selector);
             select.value = value;
             select.dispatchEvent(new Event('change', {bubbles: true}));
@@ -726,8 +766,10 @@
         };
 
         const fillForm = async (fastMode = false) => {
+            log(`Начало заполнения формы (быстрый режим: ${fastMode})`);
             const data = await GM_getValue('bankRequestData', null);
             if (!data || !data.inn) {
+                log('Ошибка: Нет сохраненных данных или ИНН');
                 showStatus('❌ Нет сохраненных данных', 5000);
                 return;
             }
@@ -765,17 +807,21 @@
                 ]);
 
                 status.textContent = '✅ Форма заполнена! Проверьте данные';
+                log('Форма успешно заполнена');
                 setTimeout(() => status.remove(), 5000);
 
             } catch (error) {
+                log(`Ошибка при заполнении формы: ${error.message}`, error);
                 status.textContent = `❌ Ошибка: ${error.message || error}`;
                 setTimeout(() => status.remove(), 5000);
             }
         };
 
         const fillProfileInFirstBank = async () => {
+            log('Начало заполнения анкетных данных в Ingobank');
             const profileData = await GM_getValue('bankProfileData', null);
             if (!profileData) {
+                log('Ошибка: Нет сохраненных анкетных данных');
                 showStatus('❌ Нет сохраненных анкетных данных', 5000);
                 return;
             }
@@ -787,8 +833,10 @@
                 const addBtn = document.querySelector('.fz-button.blue.bg-blue[ng-click*="onButtonClickHandler"]');
 
                 if (editBtn) {
+                    log('Найдена кнопка редактирования');
                     editBtn.click();
                 } else if (addBtn) {
+                    log('Найдена кнопка добавления');
                     addBtn.click();
                 } else {
                     throw new Error('Не найдена кнопка изменения/добавления');
@@ -798,12 +846,14 @@
 
                 const bankInput = document.querySelector('input[fz-select-bank]');
                 if (bankInput) {
+                    log(`Заполнение БИК: ${profileData.bik}`);
                     bankInput.value = profileData.bik;
                     bankInput.dispatchEvent(new Event('input', {bubbles: true}));
                     await new Promise(r => setTimeout(r, 1500));
 
                     const firstBankOption = document.querySelector('.suggestions .suggestion');
                     if (firstBankOption) {
+                        log('Выбор первого банка из списка');
                         firstBankOption.click();
                         await new Promise(r => setTimeout(r, 500));
                     }
@@ -811,6 +861,7 @@
 
                 const accountInput = document.querySelector('input[ng-model*="account.number"]');
                 if (accountInput) {
+                    log(`Заполнение номера счета: ${profileData.accountNumber}`);
                     accountInput.value = profileData.accountNumber;
                     accountInput.dispatchEvent(new Event('input', {bubbles: true}));
                     await new Promise(r => setTimeout(r, 500));
@@ -818,98 +869,115 @@
 
                 const okButton = document.querySelector('.fz-modal__button_main');
                 if (okButton) {
+                    log('Нажатие кнопки OK');
                     okButton.click();
                     await new Promise(r => setTimeout(r, 1000));
                 }
 
                 const changeBtn = document.querySelector('.fz-button.blue.bg-blue[ng-click*="onButtonClickHandler"]');
                 if (changeBtn) {
+                    log('Нажатие кнопки изменения');
                     changeBtn.click();
                     await new Promise(r => setTimeout(r, 1000));
                 }
 
                 const lastNameInput = document.querySelector('input[ng-model*="lastName"]');
                 if (lastNameInput) {
+                    log(`Заполнение фамилии: ${profileData.lastName}`);
                     lastNameInput.value = profileData.lastName;
                     lastNameInput.dispatchEvent(new Event('input', {bubbles: true}));
                 }
 
                 const firstNameInput = document.querySelector('input[ng-model*="firstName"]');
                 if (firstNameInput) {
+                    log(`Заполнение имени: ${profileData.firstName}`);
                     firstNameInput.value = profileData.firstName;
                     firstNameInput.dispatchEvent(new Event('input', {bubbles: true}));
                 }
 
                 const middleNameInput = document.querySelector('input[ng-model*="secondName"]');
                 if (middleNameInput) {
+                    log(`Заполнение отчества: ${profileData.middleName}`);
                     middleNameInput.value = profileData.middleName;
                     middleNameInput.dispatchEvent(new Event('input', {bubbles: true}));
                 }
 
                 const birthDateInput = document.querySelector('input[ng-model*="birthDate"]');
                 if (birthDateInput) {
+                    log(`Заполнение даты рождения: ${profileData.birthDate}`);
                     birthDateInput.value = profileData.birthDate;
                     birthDateInput.dispatchEvent(new Event('input', {bubbles: true}));
                 }
 
                 const birthPlaceInput = document.querySelector('input[ng-model*="birthPlace"]');
                 if (birthPlaceInput) {
+                    log(`Заполнение места рождения: ${profileData.birthPlace}`);
                     birthPlaceInput.value = profileData.birthPlace;
                     birthPlaceInput.dispatchEvent(new Event('input', {bubbles: true}));
                 }
 
                 const citizenshipSelect = document.querySelector('select[ng-model*="citizenship"]');
                 if (citizenshipSelect) {
+                    log('Установка гражданства');
                     citizenshipSelect.value = '0';
                     citizenshipSelect.dispatchEvent(new Event('change', {bubbles: true}));
                 }
 
                 const passportSeriesInput = document.querySelector('input[ng-model*="series"]');
                 if (passportSeriesInput) {
+                    log(`Заполнение серии паспорта: ${profileData.passportSeries}`);
                     passportSeriesInput.value = profileData.passportSeries;
                     passportSeriesInput.dispatchEvent(new Event('input', {bubbles: true}));
                 }
 
                 const passportNumberInput = document.querySelector('input[ng-model*="number"]');
                 if (passportNumberInput) {
+                    log(`Заполнение номера паспорта: ${profileData.passportNumber}`);
                     passportNumberInput.value = profileData.passportNumber;
                     passportNumberInput.dispatchEvent(new Event('input', {bubbles: true}));
                 }
 
                 const passportIssueDateInput = document.querySelector('input[ng-model*="issuedDate"]');
                 if (passportIssueDateInput) {
+                    log(`Заполнение даты выдачи паспорта: ${profileData.passportIssueDate}`);
                     passportIssueDateInput.value = profileData.passportIssueDate;
                     passportIssueDateInput.dispatchEvent(new Event('input', {bubbles: true}));
                 }
 
                 const passportDepartmentCodeInput = document.querySelector('input[ng-model*="issuingAuthorityCode"]');
                 if (passportDepartmentCodeInput) {
+                    log(`Заполнение кода подразделения: ${profileData.passportDepartmentCode}`);
                     passportDepartmentCodeInput.value = profileData.passportDepartmentCode;
                     passportDepartmentCodeInput.dispatchEvent(new Event('input', {bubbles: true}));
                 }
 
                 const passportIssuedByInput = document.querySelector('input[placeholder="Кем выдан"]');
                 if (passportIssuedByInput) {
+                    log('Заполнение кем выдан паспорт');
                     passportIssuedByInput.value = "Отделом УФМС";
                     passportIssuedByInput.dispatchEvent(new Event('input', {bubbles: true}));
                 }
 
                 const addressInput = document.querySelector('input[fz-select-address]');
                 if (addressInput) {
+                    log(`Заполнение адреса регистрации: ${profileData.registrationAddress}`);
                     addressInput.value = profileData.registrationAddress;
                     addressInput.dispatchEvent(new Event('input', {bubbles: true}));
                     await new Promise(r => setTimeout(r, 1500));
 
                     const firstAddressOption = document.querySelector('.suggestions.top .suggestion');
                     if (firstAddressOption) {
+                        log('Выбор первого адреса из списка');
                         firstAddressOption.click();
                     }
                 }
 
                 status.textContent = '✅ Анкетные данные заполнены!';
+                log('Анкетные данные успешно заполнены');
                 setTimeout(() => status.remove(), 5000);
 
             } catch (error) {
+                log(`Ошибка при заполнении анкетных данных: ${error.message}`, error);
                 status.textContent = `❌ Ошибка: ${error.message || error}`;
                 setTimeout(() => status.remove(), 5000);
             }
@@ -923,22 +991,30 @@
 
         const profileBtn = document.createElement('button');
         profileBtn.className = 'tm-control-btn tm-profile-btn';
-        profileBtn.style.bottom = '150px';
         profileBtn.textContent = 'Заполнить анкету';
+        profileBtn.style.bottom = '150px';
         profileBtn.onclick = fillProfileInFirstBank;
         document.body.appendChild(profileBtn);
     }
 
     if (window.location.href.includes('bg.realistbank.ru/new_ticket')) {
+        log('Инициализация на сайте RealistBank');
         createToggleSwitch();
 
         const waitForElement = (selector, timeout = 15000) => {
+            log(`Ожидание элемента: ${selector}`);
             return new Promise((resolve, reject) => {
                 const start = Date.now();
                 const check = () => {
                     const el = document.querySelector(selector);
-                    if (el) return resolve(el);
-                    if (Date.now() - start > timeout) return reject(new Error(`Элемент не найден: ${selector}`));
+                    if (el) {
+                        log(`Элемент найден: ${selector}`);
+                        return resolve(el);
+                    }
+                    if (Date.now() - start > timeout) {
+                        log(`Таймаут ожидания элемента: ${selector}`);
+                        return reject(new Error(`Элемент не найден: ${selector}`));
+                    }
                     requestAnimationFrame(check);
                 };
                 check();
@@ -946,6 +1022,7 @@
         };
 
         const fillField = async (selector, value) => {
+            log(`Заполнение поля ${selector} значением: ${value}`);
             const field = await waitForElement(selector);
             field.value = value;
             field.dispatchEvent(new Event('input', {bubbles: true}));
@@ -953,15 +1030,42 @@
         };
 
         const setSelectValue = async (selector, value) => {
+            log(`Установка значения селектора ${selector} в: ${value}`);
             const select = await waitForElement(selector);
             select.value = value;
             select.dispatchEvent(new Event('change', {bubbles: true}));
             await new Promise(r => setTimeout(r, 300));
         };
 
+        const clickFirstSuggestion = async () => {
+            try {
+                log('Попытка выбора первого предложения из списка');
+                const suggestionsWrapper = await waitForElement('.suggestions-wrapper', 5000);
+                const suggestionsList = suggestionsWrapper.querySelector('.suggestions-suggestions');
+                if (!suggestionsList || suggestionsList.style.display === 'none') {
+                    throw new Error('Список предложений не отображается');
+                }
+
+                const firstSuggestion = suggestionsWrapper.querySelector('.suggestions-suggestion[data-index="0"]');
+                if (!firstSuggestion) {
+                    throw new Error('Не найдено ни одного предложения');
+                }
+
+                firstSuggestion.click();
+                await new Promise(r => setTimeout(r, 500));
+                log('Первое предложение из списка успешно выбрано');
+                return true;
+            } catch (error) {
+                log(`Ошибка при выборе предложения: ${error.message}`);
+                return false;
+            }
+        };
+
         const fillRealistBankForm = async () => {
-            const data = GM_getValue('bankRequestData', null);
+            log('Начало заполнения формы в RealistBank');
+            const data = await GM_getValue('bankRequestData', null);
             if (!data || !data.inn) {
+                log('Ошибка: Нет сохраненных данных или ИНН');
                 showStatus('❌ Нет сохраненных данных', 5000);
                 return;
             }
@@ -985,10 +1089,9 @@
                 companyInput.dispatchEvent(new Event('input', {bubbles: true}));
                 await new Promise(r => setTimeout(r, 1500));
 
-                const suggestionsWrapper = await waitForElement('.suggestions-wrapper', 5000);
-                const firstSuggestion = suggestionsWrapper.querySelector('.suggestions-suggestion[data-index="0"]');
-                if (firstSuggestion) {
-                    firstSuggestion.click();
+                const success = await clickFirstSuggestion();
+                if (!success) {
+                    throw new Error('Не удалось выбрать компанию из списка');
                 }
 
                 status.textContent = '⏳ Вводим номер извещения...';
@@ -1004,9 +1107,11 @@
                 await setSelectValue('#bg_reason', data.guaranteeInfo.realistType);
 
                 status.textContent = '✅ Форма RealistBank заполнена! Проверьте данные';
+                log('Форма RealistBank успешно заполнена');
                 setTimeout(() => status.remove(), 5000);
 
             } catch (error) {
+                log(`Ошибка при заполнении формы RealistBank: ${error.message}`, error);
                 status.textContent = `❌ Ошибка: ${error.message || error}`;
                 setTimeout(() => status.remove(), 5000);
             }
@@ -1018,39 +1123,63 @@
         realistBtn.onclick = fillRealistBankForm;
         document.body.appendChild(realistBtn);
     }
-
-    if (window.location.href.includes('bg.alfabank.ru/aft-ui/orders')) {
+    if (window.location.href.includes('bg.alfabank.ru/aft-ui/order')) {
+        log('Инициализация на сайте Альфа-Банка');
         createToggleSwitch();
 
-        const waitForElement = (selector, timeout = 30000) => {
+        const waitForElement = (selector, timeout = 15000) => {
+            log(`Ожидание элемента: ${selector}`);
             return new Promise((resolve, reject) => {
                 const start = Date.now();
                 const check = () => {
                     const el = document.querySelector(selector);
-                    if (el) return resolve(el);
-                    if (Date.now() - start > timeout) return reject(new Error(`Элемент не найден: ${selector}`));
-                    setTimeout(check, 200);
+                    if (el) {
+                        log(`Элемент найден: ${selector}`);
+                        return resolve(el);
+                    }
+                    if (Date.now() - start > timeout) {
+                        log(`Таймаут ожидания элемента: ${selector}`);
+                        return reject(new Error(`Элемент не найден: ${selector}`));
+                    }
+                    requestAnimationFrame(check);
                 };
                 check();
             });
         };
 
-        const fillField = async (selector, value, options = {}) => {
+        const fillField = async (selector, value) => {
+            log(`Заполнение поля ${selector} значением: ${value}`);
             const field = await waitForElement(selector);
             field.value = value;
             field.dispatchEvent(new Event('input', {bubbles: true}));
-            await new Promise(r => setTimeout(r, options.delay || 800));
+            await new Promise(r => setTimeout(r, 300));
         };
 
-        const clickElement = async (selector, options = {}) => {
+        const clickElement = async (selector) => {
+            log(`Клик по элементу: ${selector}`);
             const element = await waitForElement(selector);
             element.click();
-            await new Promise(r => setTimeout(r, options.delay || 1000));
+            await new Promise(r => setTimeout(r, 500));
+        };
+
+        const selectFirstOption = async () => {
+            try {
+                log('Попытка выбрать первый вариант из списка');
+                const firstOption = await waitForElement('.suggestions-suggestion', 3000);
+                firstOption.click();
+                log('Первый вариант выбран');
+                return true;
+            } catch (error) {
+                log(`Ошибка при выборе варианта: ${error.message}`);
+                return false;
+            }
         };
 
         const fillAlfabankForm = async () => {
+            log('Начало заполнения формы в Альфа-Банке');
             const data = GM_getValue('bankRequestData', null);
             if (!data || !data.inn) {
+                log('Ошибка: Нет сохраненных данных или ИНН');
                 showStatus('❌ Нет сохраненных данных', 5000);
                 return;
             }
@@ -1061,12 +1190,12 @@
 
             try {
                 status.textContent = '⏳ Вводим ИНН...';
-                await fillField('input[data-test-id="principal-field"]', data.inn, {delay: 500});
+                const innInput = await waitForElement('input[data-test-id="principal-field"]');
+                innInput.value = data.inn;
+                innInput.dispatchEvent(new Event('input', {bubbles: true}));
                 await new Promise(r => setTimeout(r, 1500));
 
-                status.textContent = '⏳ Выбираем компанию...';
-                const firstCompanyOption = await waitForElement('.select-option-with-addons_option__G6b92', 5000);
-                firstCompanyOption.click();
+                await selectFirstOption();
 
                 status.textContent = '⏳ Выбираем тип гарантии...';
                 await clickElement('div[data-test-id="bankGuaranteeType"]');
@@ -1087,11 +1216,15 @@
                 const targetOption = options.find(opt => 
                     opt.textContent.includes(guaranteeType)
                 );
-                
-                if (targetOption) targetOption.click();
+
+                if (targetOption) {
+                    targetOption.click();
+                } else {
+                    throw new Error(`Не найден тип гарантии: ${guaranteeType}`);
+                }
 
                 status.textContent = '⏳ Вводим номер извещения...';
-                await fillField('input[data-test-id="tradeNumber"]', data.notice, {delay: 500});
+                await fillField('input[data-test-id="tradeNumber"]', data.notice);
 
                 status.textContent = '⏳ Выбираем реестр ЕИС...';
                 await clickElement('div[data-test-id="publicationRegistry"]');
@@ -1101,27 +1234,29 @@
                 status.textContent = '⏳ Вводим цену...';
                 const priceValue = data.guaranteeInfo.priceField === 'Предложенная цена' ? 
                     data.proposedPrice : data.initialPrice;
-                await fillField('input[data-test-id="finalAmount"]', priceValue, {delay: 500});
+                await fillField('input[data-test-id="finalAmount"]', priceValue);
 
                 status.textContent = '⏳ Вводим дату окончания...';
-                await fillField('input[data-test-id="guaranteeDateRange.to"]', data.endDate, {delay: 500});
+                await fillField('input[data-test-id="guaranteeDateRange.to"]', data.endDate);
 
                 status.textContent = '⏳ Редактируем бенефициара...';
                 await clickElement('button[data-test-id="beneficiaries.[0].editButton"]');
 
                 status.textContent = '⏳ Вводим сумму БГ...';
-                await fillField('input[data-test-id="beneficiaries[0].bgAmount"]', data.sum, {delay: 500});
+                await fillField('input[data-test-id="beneficiaries[0].bgAmount"]', data.sum);
 
                 status.textContent = '⏳ Вводим телефон...';
-                await fillField('input[data-test-id="beneficiaries[0].phone"]', phoneNumber, {delay: 500});
+                await fillField('input[data-test-id="beneficiaries[0].phone"]', phoneNumber);
 
                 status.textContent = '⏳ Вводим email...';
-                await fillField('input[data-test-id="beneficiaries[0].email"]', email, {delay: 500});
+                await fillField('input[data-test-id="beneficiaries[0].email"]', email);
 
                 status.textContent = '✅ Форма Альфа-Банка заполнена! Проверьте данные';
+                log('Форма Альфа-Банка успешно заполнена');
                 setTimeout(() => status.remove(), 5000);
 
             } catch (error) {
+                log(`Ошибка при заполнении формы Альфа-Банка: ${error.message}`, error);
                 status.textContent = `❌ Ошибка: ${error.message || error}`;
                 setTimeout(() => status.remove(), 5000);
             }
@@ -1132,104 +1267,5 @@
         alfabankBtn.textContent = 'Заполнить АльфаБанк';
         alfabankBtn.onclick = fillAlfabankForm;
         document.body.appendChild(alfabankBtn);
-    }
-
-    if (window.location.href.includes('tbank.ru')) {
-        createToggleSwitch();
-
-        const waitForElement = (selector, timeout = 30000) => {
-            return new Promise((resolve, reject) => {
-                const start = Date.now();
-                const check = () => {
-                    const el = document.querySelector(selector);
-                    if (el) return resolve(el);
-                    if (Date.now() - start > timeout) return reject(new Error(`Элемент не найден: ${selector}`));
-                    setTimeout(check, 200);
-                };
-                check();
-            });
-        };
-
-        const fillField = async (selector, value) => {
-            const field = await waitForElement(selector);
-            field.value = value;
-            field.dispatchEvent(new Event('input', {bubbles: true}));
-            await new Promise(r => setTimeout(r, 800));
-        };
-
-        const clickElement = async (selector) => {
-            const element = await waitForElement(selector);
-            element.click();
-            await new Promise(r => setTimeout(r, 1500));
-        };
-
-        const fillTbankForm = async () => {
-            const data = GM_getValue('bankRequestData', null);
-            if (!data) {
-                showStatus('❌ Нет сохраненных данных', 5000);
-                return;
-            }
-
-            const status = showStatus('⏳ Начинаем заполнение в Тбанке...', null);
-
-            try {
-                status.textContent = '⏳ Вводим номер извещения...';
-                await fillField('input[placeholder="РНТ"]', data.notice);
-
-                status.textContent = '⏳ Вводим ИНН...';
-                await fillField('input[placeholder="ИНН или название компании"]', data.inn);
-                await new Promise(r => setTimeout(r, 1500));
-
-                status.textContent = '⏳ Выбираем компанию...';
-                await clickElement('bgbroker-company-combobox');
-                const firstCompanyOption = await waitForElement('bgbroker-select-company-combobox-item', 5000);
-                firstCompanyOption.click();
-
-                status.textContent = '⏳ Выбираем закон...';
-                await clickElement('bgbroker-select-control');
-                let lawText;
-                if (data.law === '44') lawText = '44 ФЗ';
-                else if (data.law === '223') lawText = '223 ФЗ';
-                else if (data.law === '615') lawText = '185 ФЗ / 615 ПП';
-                else lawText = '44 ФЗ';
-                const lawOption = await waitForElement(`button[automation-id="${lawText}"]`, 3000);
-                lawOption.click();
-
-                status.textContent = '⏳ Выбираем тип гарантии...';
-                await clickElement('bgbroker-select-control:last-of-type');
-                let guaranteeType;
-                if (data.guaranteeInfo.bank2Type === 'PART') guaranteeType = 'Участие';
-                else if (data.guaranteeInfo.bank2Type === 'EXEC') guaranteeType = 'Исполнение';
-                else if (data.guaranteeInfo.bank2Type === 'GARANT') guaranteeType = 'Гарантийные обязательства';
-                else guaranteeType = 'Участие';
-                const guaranteeOption = await waitForElement(`button[automation-id="${guaranteeType}"]`, 3000);
-                guaranteeOption.click();
-
-                status.textContent = '⏳ Вводим сумму БГ...';
-                await fillField('tui-input-number input', data.sum);
-
-                status.textContent = '⏳ Вводим срок БГ...';
-                const dateInput = await waitForElement('tui-input-date-range input');
-                if (data.guaranteeInfo.bank2Type === 'EXEC') {
-                    dateInput.value = data.endDate;
-                } else {
-                    dateInput.value = `${data.startDate} - ${data.endDate}`;
-                }
-                dateInput.dispatchEvent(new Event('input', {bubbles: true}));
-
-                status.textContent = '✅ Форма Тбанка заполнена!';
-                setTimeout(() => status.remove(), 5000);
-
-            } catch (error) {
-                status.textContent = `❌ Ошибка: ${error.message}`;
-                setTimeout(() => status.remove(), 10000);
-            }
-        };
-
-        const tbankBtn = document.createElement('button');
-        tbankBtn.className = 'tm-control-btn tm-tbank-btn';
-        tbankBtn.textContent = 'Заполнить Тбанк';
-        tbankBtn.onclick = fillTbankForm;
-        document.body.appendChild(tbankBtn);
     }
 })();
