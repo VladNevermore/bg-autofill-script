@@ -1,20 +1,21 @@
 // ==UserScript==
 // @name         Автозаполнение и проверка параметров // dev
 // @namespace    http://tampermonkey.net/
-// @version      9.3
-// @description  Автозаполнение и сравнение параметров
+// @version      12.6
+// @description  Автозаполнение форм и сравнение параметров // dev
 // @match        https://crm.finleo.ru/orders/*
 // @match        https://market.bg.ingobank.ru/tasks*
 // @match        https://bg.realistbank.ru/new_ticket*
-// @match        https://bg.alfabank.ru/aft-ui/order*
+// @match        https://bg.alfabank.ru/aft-ui/orders*
+// @match        https://b2g.tbank.ru/bgbroker/main/create-order*
 // @author       VladNevermore
 // @icon         https://i.pinimg.com/736x/78/53/ad/7853ade6dd49b8caba4d1037e7341323.jpg
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
-// @updateURL    https://raw.githubusercontent.com/yourusername/yourrepo/main/script.dev.js
-// @downloadURL  https://raw.githubusercontent.com/yourusername/yourrepo/main/script.dev.js
+// @updateURL    https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script.dev.user.js
+// @downloadURL  https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script.dev.user.js
 // ==/UserScript==
 
 (function() {
@@ -133,6 +134,12 @@
             padding: 2px 5px !important;
             border-radius: 4px !important;
         }
+        .tm-alfabank-btn {
+            background: #EF3124 !important;
+            color: white !important;
+            bottom: 380px !important;
+            right: 20px !important;
+        }
     `);
 
     const log = (message, data = null) => {
@@ -164,6 +171,16 @@
         if (!text) return '';
         const cleanText = text.split('₽')[0].trim();
         return extractNumber(cleanText);
+    };
+
+    const extractAdvanceAmount = (text) => {
+        if (!text) return '';
+        const parts = text.split('/');
+        if (parts.length > 1) {
+            const amountPart = parts[1].trim();
+            return extractCleanPrice(amountPart);
+        }
+        return '';
     };
 
     const extractStartDate = (text) => {
@@ -201,28 +218,22 @@
 
     const findFieldByLabel = (labelText) => {
         log(`Поиск поля по метке: ${labelText}`);
-        const labels = Array.from(document.querySelectorAll('div.sc-koiXkd.eeqzUV'));
-        const label = labels.find(el => el.textContent.trim() === labelText);
-        
-        if (!label) {
-            log(`Метка '${labelText}' не найдена`);
-            return null;
+        const containers = document.querySelectorAll('div.sc-dffb1fbd-0');
+        for (const container of containers) {
+            const titleDiv = container.querySelector('div.sc-dffb1fbd-2');
+            if (titleDiv && titleDiv.textContent.trim() === labelText) {
+                const valueDiv = container.querySelector('div.sc-dffb1fbd-3');
+                if (valueDiv) {
+                    return valueDiv.textContent.trim();
+                }
+            }
         }
-
-        const container = label.closest('div.sc-gIFmxT.eRwsKd');
-        if (!container) {
-            log(`Контейнер для метки '${labelText}' не найден`);
-            return null;
-        }
-
-        const valueElement = container.querySelector('div.sc-dGJnDi.jHPrMj, span.sc-edaYAx.kchSR');
-        const value = valueElement ? valueElement.textContent.trim() : null;
-        log(`Значение для '${labelText}': ${value}`);
-        return value;
+        log(`Метка '${labelText}' не найдена`);
+        return null;
     };
 
     const getInn = () => {
-        const innElement = document.querySelector('span.sc-bXdtCk.iKvkxN');
+        const innElement = document.querySelector('span.sc-bRKDuR');
         if (innElement) {
             const innMatch = innElement.textContent.match(/\d{10,12}/);
             if (innMatch) {
@@ -325,20 +336,21 @@
         button.textContent = 'Сравнить параметры';
 
         button.addEventListener('click', () => {
-            const linkContainer = Array.from(document.querySelectorAll('.sc-gIFmxT.eRwsKd')).find(container => {
-                const title = container.querySelector('.sc-koiXkd.eeqzUV');
-                return title && title.textContent.trim() === 'Ссылка';
-            });
-            
-            if (linkContainer) {
-                const linkElement = linkContainer.querySelector('a');
-                if (linkElement && linkElement.href) {
-                    compareParameters(linkElement.href);
-                } else {
-                    alert('Ссылка на закупку не найдена');
+            const containers = document.querySelectorAll('div.sc-dffb1fbd-0');
+            let linkElement = null;
+
+            for (const container of containers) {
+                const titleDiv = container.querySelector('div.sc-dffb1fbd-2');
+                if (titleDiv && titleDiv.textContent.trim() === 'Ссылка') {
+                    linkElement = container.querySelector('a');
+                    break;
                 }
+            }
+
+            if (linkElement && linkElement.href) {
+                compareParameters(linkElement.href);
             } else {
-                alert('Блок со ссылкой не найден');
+                alert('Ссылка на закупку не найдена');
             }
         });
 
@@ -441,13 +453,13 @@
             const month = parseInt(parts[1], 10) - 1;
             const year = parseInt(parts[2], 10);
             let date = new Date(year, month, day);
-            
+
             if (parts.length >= 5) {
                 const hours = parseInt(parts[3], 10);
                 const minutes = parseInt(parts[4], 10);
                 date.setHours(hours, minutes);
             }
-            
+
             return date;
         }
         return null;
@@ -545,12 +557,12 @@
     }
 
     function findFieldElement(fieldName) {
-        const containers = document.querySelectorAll('.sc-gIFmxT.eRwsKd');
+        const containers = document.querySelectorAll('div.sc-dffb1fbd-0');
         for (const container of containers) {
-            const titleElement = container.querySelector('.sc-koiXkd.eeqzUV');
-            if (titleElement && titleElement.textContent.trim() === fieldName) {
-                const valueElement = container.querySelector('.sc-dGJnDi.jHPrMj');
-                return { container, titleElement, valueElement };
+            const titleDiv = container.querySelector('div.sc-dffb1fbd-2');
+            if (titleDiv && titleDiv.textContent.trim() === fieldName) {
+                const valueDiv = container.querySelector('div.sc-dffb1fbd-3');
+                return { container, titleDiv, valueElement: valueDiv };
             }
         }
         return null;
@@ -569,7 +581,7 @@
         let advancePayment = 'Нет данных';
         if (advanceField && advanceField.valueElement) {
             const advanceText = advanceField.valueElement.textContent.trim();
-            advancePayment = advanceText.includes('нет') ? 'Нет' : advanceText.split('/')[0].trim();
+            advancePayment = advanceText.includes('нет') ? 'Нет' : extractAdvanceAmount(advanceText);
         }
 
         return {
@@ -691,6 +703,7 @@
             const sum = findFieldByLabel('Сумма БГ');
             const period = findFieldByLabel('Срок');
             const law = findFieldByLabel('Закон');
+            const advance = findFieldByLabel('Аванс');
 
             const guaranteeInfo = getGuaranteeType(needText);
 
@@ -701,6 +714,7 @@
             const startDate = extractStartDate(period || '');
             const endDate = extractEndDate(period || '');
             const lawCode = extractLaw(law || '');
+            const advanceAmount = extractAdvanceAmount(advance || '');
 
             const data = {
                 inn: inn,
@@ -711,6 +725,7 @@
                 price: cleanPrice,
                 sum: cleanSum,
                 law: lawCode,
+                advanceAmount: advanceAmount,
                 initialPrice: extractCleanPrice(initialPrice),
                 proposedPrice: extractCleanPrice(proposedPrice),
                 email: "b.documents@bk.ru",
@@ -1212,7 +1227,7 @@
                 }
 
                 const options = Array.from(document.querySelectorAll('.select__option_199of'));
-                const targetOption = options.find(opt => 
+                const targetOption = options.find(opt =>
                     opt.textContent.includes(guaranteeType)
                 );
 
@@ -1231,7 +1246,7 @@
                 await clickElement('div[data-test-id="publicationRegistry-option"]:first-child');
 
                 status.textContent = '⏳ Вводим цену...';
-                const priceValue = data.guaranteeInfo.priceField === 'Предложенная цена' ? 
+                const priceValue = data.guaranteeInfo.priceField === 'Предложенная цена' ?
                     data.proposedPrice : data.initialPrice;
                 await fillField('input[data-test-id="finalAmount"]', priceValue);
 
@@ -1264,17 +1279,7 @@
         const alfabankBtn = document.createElement('button');
         alfabankBtn.className = 'tm-control-btn tm-alfabank-btn';
         alfabankBtn.textContent = 'Заполнить АльфаБанк';
-        alfabankBtn.style.backgroundColor = '#EF3124';
         alfabankBtn.onclick = fillAlfabankForm;
         document.body.appendChild(alfabankBtn);
-
-        GM_addStyle(`
-            .tm-alfabank-btn {
-                background: #EF3124 !important;
-                color: white !important;
-                bottom: 380px !important;
-                right: 20px !important;
-            }
-        `);
     }
 })();
