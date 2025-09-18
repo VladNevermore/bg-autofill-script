@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автозаполнение и проверка параметров // dev
 // @namespace    http://tampermonkey.net/
-// @version      12.6
+// @version      12.5
 // @description  Автозаполнение форм и сравнение параметров // dev
 // @match        https://crm.finleo.ru/orders/*
 // @match        https://market.bg.ingobank.ru/tasks*
@@ -780,56 +780,70 @@
         };
 
         const fillForm = async (fastMode = false) => {
-            log(`Начало заполнения формы (быстрый режим: ${fastMode})`);
-            const data = await GM_getValue('bankRequestData', null);
-            if (!data || !data.inn) {
-                log('Ошибка: Нет сохраненных данных или ИНН');
-                showStatus('❌ Нет сохраненных данных', 5000);
-                return;
+    log(`Начало заполнения формы (быстрый режим: ${fastMode})`);
+    const data = await GM_getValue('bankRequestData', null);
+    if (!data || !data.inn) {
+        log('Ошибка: Нет сохраненных данных или ИНН');
+        showStatus('❌ Нет сохраненных данных', 5000);
+        return;
+    }
+
+    const status = showStatus('⏳ Начинаем заполнение...', null);
+
+    try {
+        status.textContent = '⏳ Вводим ИНН...';
+        await fillField('input[placeholder="Выберите компанию"]', data.inn);
+        await new Promise(r => setTimeout(r, fastMode ? 500 : 1000));
+
+        const firstOption = await waitForElement('.suggestion', 5000);
+        firstOption.click();
+        await new Promise(r => setTimeout(r, fastMode ? 500 : 1000));
+
+        status.textContent = '⏳ Заполняем основные поля...';
+        await Promise.all([
+            fillField('input[type="email"]', data.email),
+            setSelectValue('select[ng-model="model.data.bankGuaranteeTypeRefId"]', data.guaranteeInfo.ingoType),
+            fillField('input[placeholder="ДД.ММ.ГГГГ"]', data.endDate || new Date(Date.now() + 30 * 86400000).toLocaleDateString('ru-RU')),
+            setSelectValue('select[ng-model="model.data.signingMethodTypeId"]', "1"),
+            fillField('input[ng-model="model.data.purchase.purchaseNumber"]', data.notice)
+        ]);
+
+        status.textContent = '⏳ Ищем извещение...';
+        const searchBtn = await waitForElement('button[ng-click="my.zgrSearch()"]');
+        searchBtn.removeAttribute('disabled');
+        searchBtn.click();
+        await new Promise(r => setTimeout(r, fastMode ? 1500 : 2500));
+
+        status.textContent = '⏳ Вводим суммы...';
+        await Promise.all([
+            fillField('input[ng-model="lot.finalAmount"]', data.price),
+            fillField('input[ng-model="x.bgAmount"]', data.sum)
+        ]);
+
+        if (data.advanceAmount && data.advanceAmount !== '') {
+            status.textContent = '⏳ Заполняем аванс...';
+            const prepaymentCheckbox = await waitForElement('input[id="avans-0"]');
+            if (!prepaymentCheckbox.checked) {
+                prepaymentCheckbox.click();
+                await new Promise(r => setTimeout(r, 500));
             }
 
-            const status = showStatus('⏳ Начинаем заполнение...', null);
+            const advanceInput = await waitForElement('input[ng-model="lot.contractConditions.prepaymentAmount"]');
+            advanceInput.value = data.advanceAmount;
+            advanceInput.dispatchEvent(new Event('input', {bubbles: true}));
+            await new Promise(r => setTimeout(r, 300));
+        }
 
-            try {
-                status.textContent = '⏳ Вводим ИНН...';
-                await fillField('input[placeholder="Выберите компанию"]', data.inn);
-                await new Promise(r => setTimeout(r, fastMode ? 500 : 1000));
+        status.textContent = '✅ Форма заполнена! Проверьте данные';
+        log('Форма успешно заполнена');
+        setTimeout(() => status.remove(), 5000);
 
-                const firstOption = await waitForElement('.suggestion', 5000);
-                firstOption.click();
-                await new Promise(r => setTimeout(r, fastMode ? 500 : 1000));
-
-                status.textContent = '⏳ Заполняем основные поля...';
-                await Promise.all([
-                    fillField('input[type="email"]', data.email),
-                    setSelectValue('select[ng-model="model.data.bankGuaranteeTypeRefId"]', data.guaranteeInfo.ingoType),
-                    fillField('input[placeholder="ДД.ММ.ГГГГ"]', data.endDate || new Date(Date.now() + 30 * 86400000).toLocaleDateString('ru-RU')),
-                    setSelectValue('select[ng-model="model.data.signingMethodTypeId"]', "1"),
-                    fillField('input[ng-model="model.data.purchase.purchaseNumber"]', data.notice)
-                ]);
-
-                status.textContent = '⏳ Ищем извещение...';
-                const searchBtn = await waitForElement('button[ng-click="my.zgrSearch()"]');
-                searchBtn.removeAttribute('disabled');
-                searchBtn.click();
-                await new Promise(r => setTimeout(r, fastMode ? 1500 : 2500));
-
-                status.textContent = '⏳ Вводим суммы...';
-                await Promise.all([
-                    fillField('input[ng-model="lot.finalAmount"]', data.price),
-                    fillField('input[ng-model="x.bgAmount"]', data.sum)
-                ]);
-
-                status.textContent = '✅ Форма заполнена! Проверьте данные';
-                log('Форма успешно заполнена');
-                setTimeout(() => status.remove(), 5000);
-
-            } catch (error) {
-                log(`Ошибка при заполнении формы: ${error.message}`, error);
-                status.textContent = `❌ Ошибка: ${error.message || error}`;
-                setTimeout(() => status.remove(), 5000);
-            }
-        };
+    } catch (error) {
+        log(`Ошибка при заполнении формы: ${error.message}`, error);
+        status.textContent = `❌ Ошибка: ${error.message || error}`;
+        setTimeout(() => status.remove(), 5000);
+    }
+};
 
         const fillProfileInFirstBank = async () => {
             log('Начало заполнения анкетных данных в Ingobank');
