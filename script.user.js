@@ -1,20 +1,21 @@
 // ==UserScript==
-// @name         Автозаполнение и проверка параметров
+// @name         Автозаполнение и проверка параметров // dev
 // @namespace    http://tampermonkey.net/
-// @version      11.0
-// @description  Автозаполнение форм и сравнение параметров
+// @version      12.5
+// @description  Автозаполнение форм и сравнение параметров // dev
 // @match        https://crm.finleo.ru/orders/*
 // @match        https://market.bg.ingobank.ru/tasks*
 // @match        https://bg.realistbank.ru/new_ticket*
 // @match        https://bg.alfabank.ru/aft-ui/orders*
+// @match        https://b2g.tbank.ru/bgbroker/main/create-order*
 // @author       VladNevermore
 // @icon         https://i.pinimg.com/736x/78/53/ad/7853ade6dd49b8caba4d1037e7341323.jpg
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
-// @updateURL    https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script.user.js
-// @downloadURL  https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script.user.js
+// @updateURL    https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script.dev.user.js
+// @downloadURL  https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script.dev.user.js
 // ==/UserScript==
 
 (function() {
@@ -172,6 +173,16 @@
         return extractNumber(cleanText);
     };
 
+    const extractAdvanceAmount = (text) => {
+        if (!text) return '';
+        const parts = text.split('/');
+        if (parts.length > 1) {
+            const amountPart = parts[1].trim();
+            return extractCleanPrice(amountPart);
+        }
+        return '';
+    };
+
     const extractStartDate = (text) => {
         if (!text) return '';
         const parts = text.split('—');
@@ -327,7 +338,7 @@
         button.addEventListener('click', () => {
             const containers = document.querySelectorAll('div.sc-dffb1fbd-0');
             let linkElement = null;
-            
+
             for (const container of containers) {
                 const titleDiv = container.querySelector('div.sc-dffb1fbd-2');
                 if (titleDiv && titleDiv.textContent.trim() === 'Ссылка') {
@@ -335,7 +346,7 @@
                     break;
                 }
             }
-            
+
             if (linkElement && linkElement.href) {
                 compareParameters(linkElement.href);
             } else {
@@ -442,13 +453,13 @@
             const month = parseInt(parts[1], 10) - 1;
             const year = parseInt(parts[2], 10);
             let date = new Date(year, month, day);
-            
+
             if (parts.length >= 5) {
                 const hours = parseInt(parts[3], 10);
                 const minutes = parseInt(parts[4], 10);
                 date.setHours(hours, minutes);
             }
-            
+
             return date;
         }
         return null;
@@ -570,7 +581,7 @@
         let advancePayment = 'Нет данных';
         if (advanceField && advanceField.valueElement) {
             const advanceText = advanceField.valueElement.textContent.trim();
-            advancePayment = advanceText.includes('нет') ? 'Нет' : advanceText.split('/')[0].trim();
+            advancePayment = advanceText.includes('нет') ? 'Нет' : extractAdvanceAmount(advanceText);
         }
 
         return {
@@ -692,6 +703,7 @@
             const sum = findFieldByLabel('Сумма БГ');
             const period = findFieldByLabel('Срок');
             const law = findFieldByLabel('Закон');
+            const advance = findFieldByLabel('Аванс');
 
             const guaranteeInfo = getGuaranteeType(needText);
 
@@ -702,6 +714,7 @@
             const startDate = extractStartDate(period || '');
             const endDate = extractEndDate(period || '');
             const lawCode = extractLaw(law || '');
+            const advanceAmount = extractAdvanceAmount(advance || '');
 
             const data = {
                 inn: inn,
@@ -712,6 +725,7 @@
                 price: cleanPrice,
                 sum: cleanSum,
                 law: lawCode,
+                advanceAmount: advanceAmount,
                 initialPrice: extractCleanPrice(initialPrice),
                 proposedPrice: extractCleanPrice(proposedPrice),
                 email: "b.documents@bk.ru",
@@ -766,56 +780,70 @@
         };
 
         const fillForm = async (fastMode = false) => {
-            log(`Начало заполнения формы (быстрый режим: ${fastMode})`);
-            const data = await GM_getValue('bankRequestData', null);
-            if (!data || !data.inn) {
-                log('Ошибка: Нет сохраненных данных или ИНН');
-                showStatus('❌ Нет сохраненных данных', 5000);
-                return;
+    log(`Начало заполнения формы (быстрый режим: ${fastMode})`);
+    const data = await GM_getValue('bankRequestData', null);
+    if (!data || !data.inn) {
+        log('Ошибка: Нет сохраненных данных или ИНН');
+        showStatus('❌ Нет сохраненных данных', 5000);
+        return;
+    }
+
+    const status = showStatus('⏳ Начинаем заполнение...', null);
+
+    try {
+        status.textContent = '⏳ Вводим ИНН...';
+        await fillField('input[placeholder="Выберите компанию"]', data.inn);
+        await new Promise(r => setTimeout(r, fastMode ? 500 : 1000));
+
+        const firstOption = await waitForElement('.suggestion', 5000);
+        firstOption.click();
+        await new Promise(r => setTimeout(r, fastMode ? 500 : 1000));
+
+        status.textContent = '⏳ Заполняем основные поля...';
+        await Promise.all([
+            fillField('input[type="email"]', data.email),
+            setSelectValue('select[ng-model="model.data.bankGuaranteeTypeRefId"]', data.guaranteeInfo.ingoType),
+            fillField('input[placeholder="ДД.ММ.ГГГГ"]', data.endDate || new Date(Date.now() + 30 * 86400000).toLocaleDateString('ru-RU')),
+            setSelectValue('select[ng-model="model.data.signingMethodTypeId"]', "1"),
+            fillField('input[ng-model="model.data.purchase.purchaseNumber"]', data.notice)
+        ]);
+
+        status.textContent = '⏳ Ищем извещение...';
+        const searchBtn = await waitForElement('button[ng-click="my.zgrSearch()"]');
+        searchBtn.removeAttribute('disabled');
+        searchBtn.click();
+        await new Promise(r => setTimeout(r, fastMode ? 1500 : 2500));
+
+        status.textContent = '⏳ Вводим суммы...';
+        await Promise.all([
+            fillField('input[ng-model="lot.finalAmount"]', data.price),
+            fillField('input[ng-model="x.bgAmount"]', data.sum)
+        ]);
+
+        if (data.advanceAmount && data.advanceAmount !== '') {
+            status.textContent = '⏳ Заполняем аванс...';
+            const prepaymentCheckbox = await waitForElement('input[id="avans-0"]');
+            if (!prepaymentCheckbox.checked) {
+                prepaymentCheckbox.click();
+                await new Promise(r => setTimeout(r, 500));
             }
 
-            const status = showStatus('⏳ Начинаем заполнение...', null);
+            const advanceInput = await waitForElement('input[ng-model="lot.contractConditions.prepaymentAmount"]');
+            advanceInput.value = data.advanceAmount;
+            advanceInput.dispatchEvent(new Event('input', {bubbles: true}));
+            await new Promise(r => setTimeout(r, 300));
+        }
 
-            try {
-                status.textContent = '⏳ Вводим ИНН...';
-                await fillField('input[placeholder="Выберите компанию"]', data.inn);
-                await new Promise(r => setTimeout(r, fastMode ? 500 : 1000));
+        status.textContent = '✅ Форма заполнена! Проверьте данные';
+        log('Форма успешно заполнена');
+        setTimeout(() => status.remove(), 5000);
 
-                const firstOption = await waitForElement('.suggestion', 5000);
-                firstOption.click();
-                await new Promise(r => setTimeout(r, fastMode ? 500 : 1000));
-
-                status.textContent = '⏳ Заполняем основные поля...';
-                await Promise.all([
-                    fillField('input[type="email"]', data.email),
-                    setSelectValue('select[ng-model="model.data.bankGuaranteeTypeRefId"]', data.guaranteeInfo.ingoType),
-                    fillField('input[placeholder="ДД.ММ.ГГГГ"]', data.endDate || new Date(Date.now() + 30 * 86400000).toLocaleDateString('ru-RU')),
-                    setSelectValue('select[ng-model="model.data.signingMethodTypeId"]', "1"),
-                    fillField('input[ng-model="model.data.purchase.purchaseNumber"]', data.notice)
-                ]);
-
-                status.textContent = '⏳ Ищем извещение...';
-                const searchBtn = await waitForElement('button[ng-click="my.zgrSearch()"]');
-                searchBtn.removeAttribute('disabled');
-                searchBtn.click();
-                await new Promise(r => setTimeout(r, fastMode ? 1500 : 2500));
-
-                status.textContent = '⏳ Вводим суммы...';
-                await Promise.all([
-                    fillField('input[ng-model="lot.finalAmount"]', data.price),
-                    fillField('input[ng-model="x.bgAmount"]', data.sum)
-                ]);
-
-                status.textContent = '✅ Форма заполнена! Проверьте данные';
-                log('Форма успешно заполнена');
-                setTimeout(() => status.remove(), 5000);
-
-            } catch (error) {
-                log(`Ошибка при заполнении формы: ${error.message}`, error);
-                status.textContent = `❌ Ошибка: ${error.message || error}`;
-                setTimeout(() => status.remove(), 5000);
-            }
-        };
+    } catch (error) {
+        log(`Ошибка при заполнении формы: ${error.message}`, error);
+        status.textContent = `❌ Ошибка: ${error.message || error}`;
+        setTimeout(() => status.remove(), 5000);
+    }
+};
 
         const fillProfileInFirstBank = async () => {
             log('Начало заполнения анкетных данных в Ingobank');
@@ -1213,7 +1241,7 @@
                 }
 
                 const options = Array.from(document.querySelectorAll('.select__option_199of'));
-                const targetOption = options.find(opt => 
+                const targetOption = options.find(opt =>
                     opt.textContent.includes(guaranteeType)
                 );
 
@@ -1232,7 +1260,7 @@
                 await clickElement('div[data-test-id="publicationRegistry-option"]:first-child');
 
                 status.textContent = '⏳ Вводим цену...';
-                const priceValue = data.guaranteeInfo.priceField === 'Предложенная цена' ? 
+                const priceValue = data.guaranteeInfo.priceField === 'Предложенная цена' ?
                     data.proposedPrice : data.initialPrice;
                 await fillField('input[data-test-id="finalAmount"]', priceValue);
 
