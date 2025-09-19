@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Автозаполнение и проверка параметров // dev
+// @name         Автозаполнение и проверка параметров
 // @namespace    http://tampermonkey.net/
 // @version      12.5
-// @description  Автозаполнение форм и сравнение параметров // dev
+// @description  Автозаполнение форм и сравнение параметров
 // @match        https://crm.finleo.ru/orders/*
 // @match        https://market.bg.ingobank.ru/tasks*
 // @match        https://bg.realistbank.ru/new_ticket*
@@ -14,8 +14,8 @@
 // @grant        GM_getValue
 // @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
-// @updateURL    https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script.dev.user.js
-// @downloadURL  https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script.dev.user.js
+// @updateURL    https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script.user.js
+// @downloadURL  https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script.user.js
 // ==/UserScript==
 
 (function() {
