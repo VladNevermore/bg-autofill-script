@@ -217,526 +217,88 @@
     };
 
     const findFieldByLabel = (labelText) => {
-        log(`Поиск поля по метке: ${labelText}`);
-        const containers = document.querySelectorAll('div.sc-dffb1fbd-0');
-        for (const container of containers) {
-            const titleDiv = container.querySelector('div.sc-dffb1fbd-2');
-            if (titleDiv && titleDiv.textContent.trim() === labelText) {
-                const valueDiv = container.querySelector('div.sc-dffb1fbd-3');
-                if (valueDiv) {
-                    return valueDiv.textContent.trim();
-                }
+    log(`Поиск поля по метке: ${labelText}`);
+    const containers = document.querySelectorAll('div.sc-92db39bc-0');
+    for (const container of containers) {
+        const titleDiv = container.querySelector('div.sc-92db39bc-2');
+        if (titleDiv && titleDiv.textContent.trim() === labelText) {
+            const valueDiv = container.querySelector('div.sc-92db39bc-3');
+            if (valueDiv) {
+                return valueDiv.textContent.trim();
             }
         }
-        log(`Метка '${labelText}' не найдена`);
-        return null;
+    }
+    log(`Метка '${labelText}' не найдена`);
+    return null;
+};
+
+const getInn = () => {
+    const innElement = document.querySelector('span.sc-bRKDuR');
+    if (innElement) {
+        const innMatch = innElement.textContent.match(/\d{10,12}/);
+        if (innMatch) {
+            const inn = innMatch[0];
+            log(`Получен ИНН: ${inn}`);
+            return inn;
+        }
+    }
+    log('ИНН не найден');
+    return '';
+};
+
+const saveParamsBtn = document.createElement('button');
+saveParamsBtn.className = 'tm-control-btn tm-save-btn';
+saveParamsBtn.textContent = 'Сохранить параметры';
+saveParamsBtn.onclick = () => {
+    log('Сохранение параметров заявки');
+    const inn = getInn();
+    if (!inn) {
+        log('Ошибка: ИНН не найден');
+        showStatus('❌ Не удалось получить ИНН', 3000);
+        return;
+    }
+
+    const needText = findFieldByLabel('Потребность');
+    const notice = findFieldByLabel('Номер извещения');
+    const initialPrice = findFieldByLabel('Начальная цена');
+    const proposedPrice = findFieldByLabel('Предложенная цена');
+    const sum = findFieldByLabel('Сумма БГ');
+    const period = findFieldByLabel('Срок');
+    const law = findFieldByLabel('Закон');
+    const advance = findFieldByLabel('Аванс');
+
+    const guaranteeInfo = getGuaranteeType(needText);
+
+    const priceToUse = guaranteeInfo.priceField === 'Предложенная цена' ? proposedPrice : initialPrice;
+
+    const cleanPrice = extractCleanPrice(priceToUse);
+    const cleanSum = extractCleanPrice(sum);
+    const startDate = extractStartDate(period || '');
+    const endDate = extractEndDate(period || '');
+    const lawCode = extractLaw(law || '');
+    const advanceAmount = extractAdvanceAmount(advance || '');
+
+    const data = {
+        inn: inn,
+        notice: notice || '',
+        period: period || '',
+        startDate: startDate,
+        endDate: endDate,
+        price: cleanPrice,
+        sum: cleanSum,
+        law: lawCode,
+        advanceAmount: advanceAmount,
+        initialPrice: extractCleanPrice(initialPrice),
+        proposedPrice: extractCleanPrice(proposedPrice),
+        email: "b.documents@bk.ru",
+        guaranteeInfo: guaranteeInfo
     };
 
-    const getInn = () => {
-        const innElement = document.querySelector('span.sc-bRKDuR');
-        if (innElement) {
-            const innMatch = innElement.textContent.match(/\d{10,12}/);
-            if (innMatch) {
-                const inn = innMatch[0];
-                log(`Получен ИНН: ${inn}`);
-                return inn;
-            }
-        }
-        log('ИНН не найден');
-        return '';
-    };
-
-    const getGuaranteeType = (needText) => {
-        log(`Определение типа гарантии для: ${needText}`);
-        if (!needText) return {
-            ingoType: '0',
-            bank2Type: 'PART',
-            realistType: '0',
-            priceField: 'Начальная цена',
-            proposedPriceField: 'Начальная цена'
-        };
-
-        if (needText.includes('БГ на участие')) {
-            log('Тип гарантии: БГ на участие');
-            return {
-                ingoType: '0',
-                bank2Type: 'PART',
-                realistType: '0',
-                priceField: 'Начальная цена',
-                proposedPriceField: 'Начальная цена'
-            };
-        } else if (needText.includes('БГ на исполнение')) {
-            log('Тип гарантии: БГ на исполнение');
-            return {
-                ingoType: '1',
-                bank2Type: 'EXEC',
-                realistType: '2',
-                priceField: 'Предложенная цена',
-                proposedPriceField: 'Предложенная цена'
-            };
-        } else if (needText.includes('БГ на гарантийный срок')) {
-            log('Тип гарантии: БГ на гарантийный срок');
-            return {
-                ingoType: '2',
-                bank2Type: 'GARANT',
-                realistType: '3',
-                priceField: 'Предложенная цена',
-                proposedPriceField: 'Предложенная цена'
-            };
-        }
-
-        log('Тип гарантии не распознан, используется значение по умолчанию');
-        return {
-            ingoType: '0',
-            bank2Type: 'PART',
-            realistType: '0',
-            priceField: 'Начальная цена',
-            proposedPriceField: 'Начальная цена'
-        };
-    };
-
-    const createToggleSwitch = () => {
-        log('Создание переключателя кнопок');
-        const container = document.createElement('div');
-        container.className = 'tm-toggle-container';
-
-        const label = document.createElement('span');
-        label.className = 'tm-toggle-label';
-        label.textContent = 'Кнопки';
-
-        const switchContainer = document.createElement('label');
-        switchContainer.className = 'tm-toggle-switch';
-
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = false;
-
-        const slider = document.createElement('span');
-        slider.className = 'tm-toggle-slider';
-
-        switchContainer.appendChild(checkbox);
-        switchContainer.appendChild(slider);
-        container.appendChild(label);
-        container.appendChild(switchContainer);
-
-        checkbox.addEventListener('change', function() {
-            log(`Переключатель кнопок: ${this.checked ? 'включен' : 'выключен'}`);
-            const buttons = document.querySelectorAll('.tm-control-btn, .tm-status');
-            buttons.forEach(btn => {
-                btn.style.display = this.checked ? 'block' : 'none';
-            });
-        });
-
-        document.body.appendChild(container);
-    };
-
-    function createComparisonButton() {
-        const button = document.createElement('button');
-        button.className = 'tm-control-btn tm-compare-btn';
-        button.textContent = 'Сравнить параметры';
-
-        button.addEventListener('click', () => {
-            const containers = document.querySelectorAll('div.sc-dffb1fbd-0');
-            let linkElement = null;
-
-            for (const container of containers) {
-                const titleDiv = container.querySelector('div.sc-dffb1fbd-2');
-                if (titleDiv && titleDiv.textContent.trim() === 'Ссылка') {
-                    linkElement = container.querySelector('a');
-                    break;
-                }
-            }
-
-            if (linkElement && linkElement.href) {
-                compareParameters(linkElement.href);
-            } else {
-                alert('Ссылка на закупку не найдена');
-            }
-        });
-
-        document.body.appendChild(button);
-    }
-
-    async function compareParameters(procurementUrl) {
-        try {
-            const procurementData = await fetchProcurementData(procurementUrl);
-            const clientData = getClientData();
-            const requirementType = getRequirementType(clientData.requirement);
-
-            compareAndHighlight('Номер извещения', clientData.noticeNumber, procurementData.noticeNumber);
-            compareAndHighlight('Предмет контракта', clientData.purchaseSubject, procurementData.purchaseSubject);
-            compareAndHighlight('Начальная цена', clientData.maxPrice, procurementData.maxPrice);
-
-            if (requirementType === 'participation') {
-                compareAndHighlight('Сумма БГ', clientData.guaranteeAmount, procurementData.bidSecurityAmount);
-                checkApplicationDeadline(clientData.guaranteePeriod, procurementData.applicationDeadline);
-            } else if (requirementType === 'execution') {
-                compareAndHighlight('Сумма БГ', clientData.guaranteeAmount, procurementData.contractSecurityAmount, procurementData.guaranteePercent);
-                compareAndHighlight('Аванс', clientData.advancePayment, procurementData.advancePayment);
-                checkContractPeriod(clientData.guaranteePeriod, procurementData.contractPeriod);
-            } else if (requirementType === 'warranty') {
-                compareAndHighlight('Сумма БГ', clientData.guaranteeAmount, procurementData.warrantySecurityAmount);
-            }
-        } catch (error) {
-            console.error('Ошибка при сравнении параметров:', error);
-            alert('Ошибка при сравнении параметров. Проверьте ссылку и попробуйте снова.');
-        }
-    }
-
-    function getRequirementType(requirementText) {
-        if (!requirementText) return 'unknown';
-        if (requirementText.includes('БГ на участие') || requirementText.includes('Обеспечение заявки')) return 'participation';
-        if (requirementText.includes('БГ на исполнение') || requirementText.includes('Обеспечение исполнения')) return 'execution';
-        if (requirementText.includes('БГ на гарантийный срок') || requirementText.includes('Гарантийные обязательства')) return 'warranty';
-        return 'unknown';
-    }
-
-    function checkApplicationDeadline(clientPeriod, applicationDeadline) {
-        if (!clientPeriod || clientPeriod === 'Нет данных' || !applicationDeadline || applicationDeadline === 'Нет данных') return;
-
-        const clientDates = parseClientPeriod(clientPeriod);
-        const deadlineDate = parseDate(applicationDeadline);
-        if (!clientDates || !deadlineDate) return;
-
-        const field = findFieldElement('Срок');
-        if (field && field.valueElement) {
-            field.valueElement.classList.remove('highlight', 'match', 'warning');
-
-            const deadlinePlusMonth = new Date(deadlineDate);
-            deadlinePlusMonth.setMonth(deadlinePlusMonth.getMonth() + 1);
-
-            if (clientDates.endDate >= deadlinePlusMonth) {
-                field.valueElement.classList.add('match');
-                field.valueElement.title = 'Срок гарантии соответствует требованиям (больше чем дата окончания заявок + 1 месяц)';
-            } else {
-                field.valueElement.classList.add('highlight');
-                field.valueElement.title = 'Срок гарантии меньше чем дата окончания заявок + 1 месяц';
-            }
-        }
-    }
-
-    function checkContractPeriod(clientPeriod, procurementPeriod) {
-        if (!clientPeriod || clientPeriod === 'Нет данных' || !procurementPeriod || procurementPeriod === 'Нет данных') return;
-
-        const clientDates = parseClientPeriod(clientPeriod);
-        const procurementDate = parseDate(procurementPeriod);
-        if (!clientDates || !procurementDate) return;
-
-        const field = findFieldElement('Срок');
-        if (field && field.valueElement) {
-            field.valueElement.classList.remove('highlight', 'match', 'warning');
-
-            if (clientDates.endDate >= procurementDate) {
-                field.valueElement.classList.add('match');
-                field.valueElement.title = 'Срок гарантии соответствует сроку исполнения контракта';
-            } else {
-                field.valueElement.classList.add('highlight');
-                field.valueElement.title = 'Срок гарантии меньше срока исполнения контракта';
-            }
-        }
-    }
-
-    function parseClientPeriod(periodText) {
-        const dateMatch = periodText.match(/(\d{2}\.\d{2}\.\d{4})\s*—\s*(\d{2}\.\d{2}\.\d{4})/);
-        if (!dateMatch) return null;
-
-        return {
-            startDate: parseDate(dateMatch[1]),
-            endDate: parseDate(dateMatch[2])
-        };
-    }
-
-    function parseDate(dateString) {
-        const parts = dateString.split(/[\.\s:]/);
-        if (parts.length >= 3) {
-            const day = parseInt(parts[0], 10);
-            const month = parseInt(parts[1], 10) - 1;
-            const year = parseInt(parts[2], 10);
-            let date = new Date(year, month, day);
-
-            if (parts.length >= 5) {
-                const hours = parseInt(parts[3], 10);
-                const minutes = parseInt(parts[4], 10);
-                date.setHours(hours, minutes);
-            }
-
-            return date;
-        }
-        return null;
-    }
-
-    function fetchProcurementData(url) {
-        return new Promise((resolve, reject) => {
-            GM_xmlhttpRequest({
-                method: 'GET',
-                url: url,
-                onload: function(response) {
-                    try {
-                        const parser = new DOMParser();
-                        const doc = parser.parseFromString(response.responseText, 'text/html');
-
-                        const noticeNumberElement = doc.querySelector('.cardMainInfo__purchaseLink a');
-                        const noticeNumber = noticeNumberElement ? noticeNumberElement.textContent.trim().replace(/№\s*/g, '') : 'Нет данных';
-
-                        const purchaseSubjectElement = doc.querySelector('.cardMainInfo__section span.cardMainInfo__content');
-                        const purchaseSubject = purchaseSubjectElement ? purchaseSubjectElement.textContent.trim() : 'Нет данных';
-
-                        const maxPriceElement = doc.querySelector('.price .cardMainInfo__content.cost');
-                        let maxPrice = maxPriceElement ? maxPriceElement.textContent.trim().replace(/\s/g, '') : 'Нет данных';
-                        let maxPriceValue = maxPrice !== 'Нет данных' ? parseFloat(maxPrice.replace(/\s/g, '').replace(',', '.')) : 0;
-
-                        let bidSecurityAmount = 'Нет данных';
-                        const bidSecuritySection = findSectionByTitle(doc, 'Размер обеспечения заявки');
-                        if (bidSecuritySection) bidSecurityAmount = cleanAmountText(bidSecuritySection.querySelector('.section__info').textContent.trim());
-
-                        let contractSecurityAmount = 'Нет данных';
-                        let guaranteePercent = null;
-                        const contractSecuritySection = findSectionByTitle(doc, 'Размер обеспечения исполнения контракта');
-                        if (contractSecuritySection) {
-                            const guaranteeText = contractSecuritySection.querySelector('.section__info').textContent.trim();
-                            contractSecurityAmount = guaranteeText.split('\n')[0].trim();
-                            const percentMatch = contractSecurityAmount.match(/(\d+(?:,\d+)?)\s*%/);
-                            if (percentMatch) {
-                                guaranteePercent = parseFloat(percentMatch[1].replace(',', '.'));
-                                if (!isNaN(guaranteePercent) && maxPriceValue > 0) {
-                                    const calculatedAmount = (maxPriceValue * guaranteePercent) / 100;
-                                    contractSecurityAmount = new Intl.NumberFormat('ru-RU').format(calculatedAmount) + ' руб.';
-                                }
-                            }
-                        }
-
-                        let warrantySecurityAmount = 'Нет данных';
-                        const warrantySecuritySection = findSectionByTitle(doc, 'Размер обеспечения гарантийных обязательств');
-                        if (warrantySecuritySection) warrantySecurityAmount = cleanAmountText(warrantySecuritySection.querySelector('.section__info').textContent.trim());
-
-                        let advancePayment = 'Нет данных';
-                        const advanceSection = findSectionByTitle(doc, 'Размер аванса');
-                        if (advanceSection) advancePayment = advanceSection.querySelector('.section__info').textContent.trim();
-
-                        let applicationDeadline = 'Нет данных';
-                        const deadlineSection = findSectionByTitle(doc, 'Дата и время окончания срока подачи заявок');
-                        if (deadlineSection) applicationDeadline = deadlineSection.querySelector('.section__info').textContent.replace(/\([^)]+\)/g, '').trim();
-
-                        let contractPeriod = 'Нет данных';
-                        const contractSection = findSectionByTitle(doc, 'Срок исполнения контракта');
-                        if (contractSection) contractPeriod = contractSection.querySelector('.section__info').textContent.trim().split('\n')[0].trim();
-
-                        resolve({
-                            purchaseSubject: purchaseSubject,
-                            maxPrice: maxPrice,
-                            bidSecurityAmount: bidSecurityAmount,
-                            contractSecurityAmount: contractSecurityAmount,
-                            warrantySecurityAmount: warrantySecurityAmount,
-                            advancePayment: advancePayment,
-                            noticeNumber: noticeNumber,
-                            applicationDeadline: applicationDeadline,
-                            contractPeriod: contractPeriod,
-                            guaranteePercent: guaranteePercent
-                        });
-                    } catch (e) {
-                        reject(e);
-                    }
-                },
-                onerror: function(error) {
-                    reject(error);
-                }
-            });
-        });
-    }
-
-    function findSectionByTitle(doc, titleText) {
-        const sections = Array.from(doc.querySelectorAll('.blockInfo__section'));
-        return sections.find(section => {
-            const title = section.querySelector('.section__title');
-            return title && title.textContent.includes(titleText);
-        });
-    }
-
-    function cleanAmountText(text) {
-        return text.replace(/[^\d,.]/g, '').replace(/\s/g, '').replace(',', '.');
-    }
-
-    function findFieldElement(fieldName) {
-        const containers = document.querySelectorAll('div.sc-dffb1fbd-0');
-        for (const container of containers) {
-            const titleDiv = container.querySelector('div.sc-dffb1fbd-2');
-            if (titleDiv && titleDiv.textContent.trim() === fieldName) {
-                const valueDiv = container.querySelector('div.sc-dffb1fbd-3');
-                return { container, titleDiv, valueElement: valueDiv };
-            }
-        }
-        return null;
-    }
-
-    function getClientData() {
-        function findValueByTitle(titleText) {
-            const field = findFieldElement(titleText);
-            return field && field.valueElement ? field.valueElement.textContent.trim() : 'Нет данных';
-        }
-
-        const requirementField = findFieldElement('Потребность');
-        const requirement = requirementField && requirementField.valueElement ? requirementField.valueElement.textContent.trim() : 'Нет данных';
-
-        const advanceField = findFieldElement('Аванс');
-        let advancePayment = 'Нет данных';
-        if (advanceField && advanceField.valueElement) {
-            const advanceText = advanceField.valueElement.textContent.trim();
-            advancePayment = advanceText.includes('нет') ? 'Нет' : extractAdvanceAmount(advanceText);
-        }
-
-        return {
-            purchaseSubject: findValueByTitle('Предмет контракта') || 'Нет данных',
-            maxPrice: findValueByTitle('Начальная цена') || 'Нет данных',
-            guaranteeAmount: findValueByTitle('Сумма БГ') || 'Нет данных',
-            noticeNumber: findValueByTitle('Номер извещения') || 'Нет данных',
-            guaranteePeriod: findValueByTitle('Срок') || 'Нет данных',
-            requirement: requirement,
-            advancePayment: advancePayment
-        };
-    }
-
-    function compareAndHighlight(fieldName, clientValue, procurementValue, additionalInfo = null) {
-        const field = findFieldElement(fieldName);
-        if (field && field.valueElement) {
-            field.valueElement.classList.remove('highlight', 'match', 'warning');
-
-            let tooltipText = procurementValue === 'Нет данных' ? 'Не удалось получить данные с сайта гос. закупок' : 'На сайте гос. закупок: ' + procurementValue;
-            if (additionalInfo !== null && fieldName === 'Сумма БГ') tooltipText += ` (${additionalInfo}% от цены контракта)`;
-
-            if (fieldName === 'Аванс') {
-                if (clientValue === 'Нет' && procurementValue === 'Нет данных') {
-                    field.valueElement.classList.add('match');
-                    field.valueElement.title = 'На сайте гос. закупок аванс не указан';
-                } else if (clientValue === 'Нет' && procurementValue !== 'Нет данных') {
-                    field.valueElement.classList.add('highlight');
-                    field.valueElement.title = 'На сайте гос. закупок указан аванс: ' + procurementValue;
-                } else if (clientValue !== 'Нет' && procurementValue === 'Нет данных') {
-                    field.valueElement.classList.add('warning');
-                    field.valueElement.title = 'Не удалось проверить аванс на сайте гос. закупок';
-                } else {
-                    const clientPercent = parseFloat(clientValue.replace('%', '').trim());
-                    const procurementPercent = parseFloat(procurementValue.replace('%', '').replace(',', '.').trim());
-                    if (clientPercent === procurementPercent) {
-                        field.valueElement.classList.add('match');
-                        field.valueElement.title = 'Процент аванса совпадает: ' + procurementValue;
-                    } else {
-                        field.valueElement.classList.add('highlight');
-                        field.valueElement.title = 'Процент аванса отличается: ' + procurementValue;
-                    }
-                }
-            } else {
-                if (clientValue === procurementValue) {
-                    field.valueElement.classList.add('match');
-                    field.valueElement.title = 'Совпадает с сайтом гос. закупок: ' + procurementValue;
-                } else if (procurementValue === 'Нет данных') {
-                    field.valueElement.classList.add('warning');
-                    field.valueElement.title = tooltipText;
-                } else {
-                    field.valueElement.classList.add('highlight');
-                    field.valueElement.title = tooltipText;
-                }
-            }
-        }
-    }
-
-    if (window.location.href.includes('https://crm.finleo.ru/orders/')) {
-        log('Инициализация на сайте CRM Finleo');
-        createToggleSwitch();
-        createComparisonButton();
-
-        const saveProfileBtn = document.createElement('button');
-        saveProfileBtn.className = 'tm-control-btn tm-profile-btn';
-        saveProfileBtn.textContent = 'Сохранить анкету';
-        saveProfileBtn.onclick = () => {
-            log('Сохранение анкетных данных');
-            const fio = findFieldByLabel('ФИО:');
-            const birthDate = findFieldByLabel('Дата рождения:');
-            const birthPlace = findFieldByLabel('Место рождения:');
-            const passportSeries = findFieldByLabel('Серия паспорта:');
-            const passportNumber = findFieldByLabel('Номер паспорта:');
-            const passportIssueDate = findFieldByLabel('Дата выдачи:');
-            const passportDepartmentCode = findFieldByLabel('Код подразделения:');
-            const registrationAddress = findFieldByLabel('Адрес регистрации:');
-            const bik = findFieldByLabel('БИК:');
-            const accountNumber = findFieldByLabel('р/с:');
-
-            const fioParts = splitFIO(fio);
-
-            const profileData = {
-                fio: fio || '',
-                lastName: fioParts.lastName,
-                firstName: fioParts.firstName,
-                middleName: fioParts.middleName,
-                birthDate: birthDate || '',
-                birthPlace: birthPlace || '',
-                passportSeries: passportSeries || '',
-                passportNumber: passportNumber || '',
-                passportIssueDate: passportIssueDate || '',
-                passportDepartmentCode: passportDepartmentCode || '',
-                registrationAddress: registrationAddress || '',
-                bik: bik || '',
-                accountNumber: accountNumber || ''
-            };
-
-            GM_setValue('bankProfileData', profileData);
-            log('Анкетные данные сохранены', profileData);
-            showStatus('✅ Анкетные данные сохранены!', 3000);
-        };
-        document.body.appendChild(saveProfileBtn);
-
-        const saveParamsBtn = document.createElement('button');
-        saveParamsBtn.className = 'tm-control-btn tm-save-btn';
-        saveParamsBtn.textContent = 'Сохранить параметры';
-        saveParamsBtn.onclick = () => {
-            log('Сохранение параметров заявки');
-            const inn = getInn();
-            if (!inn) {
-                log('Ошибка: ИНН не найден');
-                showStatus('❌ Не удалось получить ИНН', 3000);
-                return;
-            }
-
-            const needText = findFieldByLabel('Потребность');
-            const notice = findFieldByLabel('Номер извещения');
-            const initialPrice = findFieldByLabel('Начальная цена');
-            const proposedPrice = findFieldByLabel('Предложенная цена');
-            const sum = findFieldByLabel('Сумма БГ');
-            const period = findFieldByLabel('Срок');
-            const law = findFieldByLabel('Закон');
-            const advance = findFieldByLabel('Аванс');
-
-            const guaranteeInfo = getGuaranteeType(needText);
-
-            const priceToUse = guaranteeInfo.priceField === 'Предложенная цена' ? proposedPrice : initialPrice;
-
-            const cleanPrice = extractCleanPrice(priceToUse);
-            const cleanSum = extractCleanPrice(sum);
-            const startDate = extractStartDate(period || '');
-            const endDate = extractEndDate(period || '');
-            const lawCode = extractLaw(law || '');
-            const advanceAmount = extractAdvanceAmount(advance || '');
-
-            const data = {
-                inn: inn,
-                notice: notice || '',
-                period: period || '',
-                startDate: startDate,
-                endDate: endDate,
-                price: cleanPrice,
-                sum: cleanSum,
-                law: lawCode,
-                advanceAmount: advanceAmount,
-                initialPrice: extractCleanPrice(initialPrice),
-                proposedPrice: extractCleanPrice(proposedPrice),
-                email: "b.documents@bk.ru",
-                guaranteeInfo: guaranteeInfo
-            };
-
-            GM_setValue('bankRequestData', data);
-            log('Параметры заявки сохранены', data);
-            showStatus('✅ Параметры заявки сохранены!', 3000);
-        };
-        document.body.appendChild(saveParamsBtn);
+    GM_setValue('bankRequestData', data);
+    log('Параметры заявки сохранены', data);
+    showStatus('✅ Параметры заявки сохранены!', 3000);
+};
+document.body.appendChild(saveParamsBtn);
     }
 
     if (window.location.href.includes('market.bg.ingobank.ru/tasks')) {
