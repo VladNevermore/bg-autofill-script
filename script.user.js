@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         Автозаполнение и проверка параметров
 // @namespace    http://tampermonkey.net/
-// @version      12.5
+// @version      14.3
 // @description  Автозаполнение форм и сравнение параметров
-// @match        https://crm.finleo.ru/orders/*
+// @match        https://crm.finleo.ru/crm/orders/*
 // @match        https://market.bg.ingobank.ru/tasks*
 // @match        https://bg.realistbank.ru/new_ticket*
 // @match        https://bg.alfabank.ru/aft-ui/orders*
@@ -14,6 +14,10 @@
 // @grant        GM_getValue
 // @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
+// @connect      zakupki.gov.ru
+// @connect      www.zakupki.gov.ru
+// @connect      epz.zakupki.gov.ru
+// @connect      *
 // @updateURL    https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script.user.js
 // @downloadURL  https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script.user.js
 // ==/UserScript==
@@ -206,55 +210,163 @@
         return match ? match[1] : '';
     };
 
-    const splitFIO = (fio) => {
-        if (!fio) return { lastName: '', firstName: '', middleName: '' };
-        const parts = fio.split(' ');
-        return {
-            lastName: parts[0] || '',
-            firstName: parts[1] || '',
-            middleName: parts[2] || ''
-        };
-    };
-
     const findFieldByLabel = (labelText) => {
-        log(`Поиск поля по метке: ${labelText}`);
-        const containers = document.querySelectorAll('div.sc-dffb1fbd-0');
+        log(`Поиск поля по метке: "${labelText}"`);
+
+        const containers = document.querySelectorAll('[class*="sc-"]');
         for (const container of containers) {
-            const titleDiv = container.querySelector('div.sc-dffb1fbd-2');
-            if (titleDiv && titleDiv.textContent.trim() === labelText) {
-                const valueDiv = container.querySelector('div.sc-dffb1fbd-3');
-                if (valueDiv) {
-                    return valueDiv.textContent.trim();
+            const labelElement = Array.from(container.children).find(child =>
+                child.textContent && child.textContent.trim() === labelText
+            );
+            if (labelElement) {
+                const valueElement = Array.from(container.children).find(child =>
+                    child !== labelElement && child.textContent && child.textContent.trim() !== ''
+                );
+                if (valueElement) {
+                    const result = valueElement.textContent.trim();
+                    log(`Найдено значение для "${labelText}": "${result}"`);
+                    return result;
                 }
             }
         }
-        log(`Метка '${labelText}' не найдена`);
+
+        const allElements = document.querySelectorAll('*');
+        for (const element of allElements) {
+            if (element.textContent && element.textContent.trim() === labelText) {
+                log(`Найдена метка: "${labelText}"`, element);
+
+                let currentElement = element.parentElement;
+                let depth = 0;
+
+                while (currentElement && depth < 10) {
+                    const children = Array.from(currentElement.children);
+                    const valueElement = children.find(child =>
+                        child !== element &&
+                        child.textContent &&
+                        child.textContent.trim() !== '' &&
+                        !child.querySelector('button')
+                    );
+
+                    if (valueElement) {
+                        const clone = valueElement.cloneNode(true);
+                        const buttons = clone.querySelectorAll('button');
+                        buttons.forEach(btn => btn.remove());
+                        const chips = clone.querySelectorAll('[class*="Chip"], [class*="chip"]');
+                        chips.forEach(chip => chip.remove());
+                        const result = clone.textContent.trim();
+                        log(`Найдено значение для "${labelText}": "${result}"`);
+                        return result;
+                    }
+
+                    currentElement = currentElement.parentElement;
+                    depth++;
+                }
+
+                let nextElement = element.nextElementSibling;
+                depth = 0;
+                while (nextElement && depth < 5) {
+                    if (nextElement.textContent && nextElement.textContent.trim() !== '') {
+                        const clone = nextElement.cloneNode(true);
+                        const buttons = clone.querySelectorAll('button');
+                        buttons.forEach(btn => btn.remove());
+                        const chips = clone.querySelectorAll('[class*="Chip"], [class*="chip"]');
+                        chips.forEach(chip => chip.remove());
+                        const result = clone.textContent.trim();
+                        log(`Найдено значение для "${labelText}" в соседнем элементе: "${result}"`);
+                        return result;
+                    }
+                    nextElement = nextElement.nextElementSibling;
+                    depth++;
+                }
+            }
+        }
+
+        log(`Метка "${labelText}" не найдена`);
         return null;
     };
 
     const getInn = () => {
-        const innElement = document.querySelector('span.sc-bRKDuR');
-        if (innElement) {
-            const innMatch = innElement.textContent.match(/\d{10,12}/);
-            if (innMatch) {
-                const inn = innMatch[0];
-                log(`Получен ИНН: ${inn}`);
-                return inn;
+        log('Поиск ИНН');
+
+        // Ищем ИНН в элементах с классом MuiTypography-caption
+        const captionElements = document.querySelectorAll('.MuiTypography-caption');
+        for (const element of captionElements) {
+            if (element.textContent && element.textContent.includes('ИНН')) {
+                const innMatch = element.textContent.match(/\d{10,12}/);
+                if (innMatch) {
+                    const inn = innMatch[0];
+                    log(`Получен ИНН из MuiTypography-caption: ${inn}`);
+                    return inn;
+                }
             }
         }
+
+        // Ищем ИНН в элементах с классом sc-bRKDuR
+        const scElements = document.querySelectorAll('.sc-bRKDuR');
+        for (const element of scElements) {
+            if (element.textContent && element.textContent.includes('ИНН')) {
+                const innMatch = element.textContent.match(/\d{10,12}/);
+                if (innMatch) {
+                    const inn = innMatch[0];
+                    log(`Получен ИНН из sc-bRKDuR: ${inn}`);
+                    return inn;
+                }
+            }
+        }
+
+        // Резервный поиск во всех элементах
+        const elementsWithInn = document.querySelectorAll('*');
+        for (const element of elementsWithInn) {
+            if (element.textContent && element.textContent.includes('ИНН')) {
+                const innMatch = element.textContent.match(/\d{10,12}/);
+                if (innMatch) {
+                    const inn = innMatch[0];
+                    log(`Получен ИНН: ${inn}`);
+                    return inn;
+                }
+            }
+        }
+
         log('ИНН не найден');
         return '';
     };
 
+    const getProcurementLink = () => {
+        log('Поиск ссылки на закупку');
+
+        const links = document.querySelectorAll('a');
+        for (const link of links) {
+            if (link.href && link.href.includes('zakupki.gov.ru')) {
+                log('Найдена ссылка на закупки:', link.href);
+                return link.href;
+            }
+        }
+
+        const linkFromField = findFieldByLabel('Ссылка на закупку');
+        if (linkFromField) {
+            const linkMatch = linkFromField.match(/https?:\/\/[^\s]+/);
+            if (linkMatch) {
+                log('Найдена ссылка из поля:', linkMatch[0]);
+                return linkMatch[0];
+            }
+        }
+
+        log('Ссылка на закупку не найдена');
+        return null;
+    };
+
     const getGuaranteeType = (needText) => {
         log(`Определение типа гарантии для: ${needText}`);
-        if (!needText) return {
-            ingoType: '0',
-            bank2Type: 'PART',
-            realistType: '0',
-            priceField: 'Начальная цена',
-            proposedPriceField: 'Начальная цена'
-        };
+        if (!needText) {
+            log('Текст потребности пуст, используется значение по умолчанию');
+            return {
+                ingoType: '0',
+                bank2Type: 'PART',
+                realistType: '0',
+                priceField: 'Начальная цена',
+                proposedPriceField: 'Начальная цена'
+            };
+        }
 
         if (needText.includes('БГ на участие')) {
             log('Тип гарантии: БГ на участие');
@@ -336,20 +448,13 @@
         button.textContent = 'Сравнить параметры';
 
         button.addEventListener('click', () => {
-            const containers = document.querySelectorAll('div.sc-dffb1fbd-0');
-            let linkElement = null;
-
-            for (const container of containers) {
-                const titleDiv = container.querySelector('div.sc-dffb1fbd-2');
-                if (titleDiv && titleDiv.textContent.trim() === 'Ссылка') {
-                    linkElement = container.querySelector('a');
-                    break;
-                }
-            }
-
-            if (linkElement && linkElement.href) {
-                compareParameters(linkElement.href);
+            log('Нажата кнопка сравнения параметров');
+            const link = getProcurementLink();
+            if (link) {
+                log(`Ссылка найдена: ${link}`);
+                compareParameters(link);
             } else {
+                log('Ссылка не найдена');
                 alert('Ссылка на закупку не найдена');
             }
         });
@@ -359,6 +464,9 @@
 
     async function compareParameters(procurementUrl) {
         try {
+            showStatus('⏳ Сравнение параметров...', null);
+            log('Начало сравнения параметров с URL:', procurementUrl);
+
             const procurementData = await fetchProcurementData(procurementUrl);
             const clientData = getClientData();
             const requirementType = getRequirementType(clientData.requirement);
@@ -366,20 +474,22 @@
             compareAndHighlight('Номер извещения', clientData.noticeNumber, procurementData.noticeNumber);
             compareAndHighlight('Предмет контракта', clientData.purchaseSubject, procurementData.purchaseSubject);
             compareAndHighlight('Начальная цена', clientData.maxPrice, procurementData.maxPrice);
+            compareAndHighlight('Срок БГ', clientData.guaranteePeriod, procurementData.contractPeriod);
 
             if (requirementType === 'participation') {
                 compareAndHighlight('Сумма БГ', clientData.guaranteeAmount, procurementData.bidSecurityAmount);
-                checkApplicationDeadline(clientData.guaranteePeriod, procurementData.applicationDeadline);
             } else if (requirementType === 'execution') {
                 compareAndHighlight('Сумма БГ', clientData.guaranteeAmount, procurementData.contractSecurityAmount, procurementData.guaranteePercent);
                 compareAndHighlight('Аванс', clientData.advancePayment, procurementData.advancePayment);
-                checkContractPeriod(clientData.guaranteePeriod, procurementData.contractPeriod);
             } else if (requirementType === 'warranty') {
                 compareAndHighlight('Сумма БГ', clientData.guaranteeAmount, procurementData.warrantySecurityAmount);
             }
+
+            showStatus('✅ Сравнение завершено!', 5000);
+
         } catch (error) {
             console.error('Ошибка при сравнении параметров:', error);
-            alert('Ошибка при сравнении параметров. Проверьте ссылку и попробуйте снова.');
+            showStatus('❌ Ошибка при сравнении параметров: ' + error.message, 5000);
         }
     }
 
@@ -391,155 +501,106 @@
         return 'unknown';
     }
 
-    function checkApplicationDeadline(clientPeriod, applicationDeadline) {
-        if (!clientPeriod || clientPeriod === 'Нет данных' || !applicationDeadline || applicationDeadline === 'Нет данных') return;
-
-        const clientDates = parseClientPeriod(clientPeriod);
-        const deadlineDate = parseDate(applicationDeadline);
-        if (!clientDates || !deadlineDate) return;
-
-        const field = findFieldElement('Срок');
-        if (field && field.valueElement) {
-            field.valueElement.classList.remove('highlight', 'match', 'warning');
-
-            const deadlinePlusMonth = new Date(deadlineDate);
-            deadlinePlusMonth.setMonth(deadlinePlusMonth.getMonth() + 1);
-
-            if (clientDates.endDate >= deadlinePlusMonth) {
-                field.valueElement.classList.add('match');
-                field.valueElement.title = 'Срок гарантии соответствует требованиям (больше чем дата окончания заявок + 1 месяц)';
-            } else {
-                field.valueElement.classList.add('highlight');
-                field.valueElement.title = 'Срок гарантии меньше чем дата окончания заявок + 1 месяц';
-            }
-        }
-    }
-
-    function checkContractPeriod(clientPeriod, procurementPeriod) {
-        if (!clientPeriod || clientPeriod === 'Нет данных' || !procurementPeriod || procurementPeriod === 'Нет данных') return;
-
-        const clientDates = parseClientPeriod(clientPeriod);
-        const procurementDate = parseDate(procurementPeriod);
-        if (!clientDates || !procurementDate) return;
-
-        const field = findFieldElement('Срок');
-        if (field && field.valueElement) {
-            field.valueElement.classList.remove('highlight', 'match', 'warning');
-
-            if (clientDates.endDate >= procurementDate) {
-                field.valueElement.classList.add('match');
-                field.valueElement.title = 'Срок гарантии соответствует сроку исполнения контракта';
-            } else {
-                field.valueElement.classList.add('highlight');
-                field.valueElement.title = 'Срок гарантии меньше срока исполнения контракта';
-            }
-        }
-    }
-
-    function parseClientPeriod(periodText) {
-        const dateMatch = periodText.match(/(\d{2}\.\d{2}\.\d{4})\s*—\s*(\d{2}\.\d{2}\.\d{4})/);
-        if (!dateMatch) return null;
-
-        return {
-            startDate: parseDate(dateMatch[1]),
-            endDate: parseDate(dateMatch[2])
-        };
-    }
-
-    function parseDate(dateString) {
-        const parts = dateString.split(/[\.\s:]/);
-        if (parts.length >= 3) {
-            const day = parseInt(parts[0], 10);
-            const month = parseInt(parts[1], 10) - 1;
-            const year = parseInt(parts[2], 10);
-            let date = new Date(year, month, day);
-
-            if (parts.length >= 5) {
-                const hours = parseInt(parts[3], 10);
-                const minutes = parseInt(parts[4], 10);
-                date.setHours(hours, minutes);
-            }
-
-            return date;
-        }
-        return null;
-    }
-
     function fetchProcurementData(url) {
         return new Promise((resolve, reject) => {
+            log(`Загрузка данных с госзакупок: ${url}`);
+
             GM_xmlhttpRequest({
                 method: 'GET',
                 url: url,
+                responseType: 'text',
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                    'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8'
+                },
                 onload: function(response) {
-                    try {
-                        const parser = new DOMParser();
-                        const doc = parser.parseFromString(response.responseText, 'text/html');
+                    log(`Статус ответа госзакупок: ${response.status}`);
 
-                        const noticeNumberElement = doc.querySelector('.cardMainInfo__purchaseLink a');
-                        const noticeNumber = noticeNumberElement ? noticeNumberElement.textContent.trim().replace(/№\s*/g, '') : 'Нет данных';
+                    if (response.status === 200 && response.responseText) {
+                        try {
+                            const parser = new DOMParser();
+                            const doc = parser.parseFromString(response.responseText, 'text/html');
 
-                        const purchaseSubjectElement = doc.querySelector('.cardMainInfo__section span.cardMainInfo__content');
-                        const purchaseSubject = purchaseSubjectElement ? purchaseSubjectElement.textContent.trim() : 'Нет данных';
+                            const noticeNumberElement = doc.querySelector('.cardMainInfo__purchaseLink a');
+                            const noticeNumber = noticeNumberElement ?
+                                noticeNumberElement.textContent.trim().replace(/№\s*/g, '') :
+                                'Нет данных';
 
-                        const maxPriceElement = doc.querySelector('.price .cardMainInfo__content.cost');
-                        let maxPrice = maxPriceElement ? maxPriceElement.textContent.trim().replace(/\s/g, '') : 'Нет данных';
-                        let maxPriceValue = maxPrice !== 'Нет данных' ? parseFloat(maxPrice.replace(/\s/g, '').replace(',', '.')) : 0;
+                            const purchaseSubjectElement = doc.querySelector('.cardMainInfo__section span.cardMainInfo__content');
+                            const purchaseSubject = purchaseSubjectElement ?
+                                purchaseSubjectElement.textContent.trim() :
+                                'Нет данных';
 
-                        let bidSecurityAmount = 'Нет данных';
-                        const bidSecuritySection = findSectionByTitle(doc, 'Размер обеспечения заявки');
-                        if (bidSecuritySection) bidSecurityAmount = cleanAmountText(bidSecuritySection.querySelector('.section__info').textContent.trim());
+                            const maxPriceElement = doc.querySelector('.price .cardMainInfo__content.cost');
+                            let maxPrice = maxPriceElement ?
+                                maxPriceElement.textContent.trim() :
+                                'Нет данных';
 
-                        let contractSecurityAmount = 'Нет данных';
-                        let guaranteePercent = null;
-                        const contractSecuritySection = findSectionByTitle(doc, 'Размер обеспечения исполнения контракта');
-                        if (contractSecuritySection) {
-                            const guaranteeText = contractSecuritySection.querySelector('.section__info').textContent.trim();
-                            contractSecurityAmount = guaranteeText.split('\n')[0].trim();
-                            const percentMatch = contractSecurityAmount.match(/(\d+(?:,\d+)?)\s*%/);
-                            if (percentMatch) {
-                                guaranteePercent = parseFloat(percentMatch[1].replace(',', '.'));
-                                if (!isNaN(guaranteePercent) && maxPriceValue > 0) {
-                                    const calculatedAmount = (maxPriceValue * guaranteePercent) / 100;
-                                    contractSecurityAmount = new Intl.NumberFormat('ru-RU').format(calculatedAmount) + ' руб.';
+                            let bidSecurityAmount = 'Нет данных';
+                            const bidSecuritySection = findSectionByTitle(doc, 'Размер обеспечения заявки');
+                            if (bidSecuritySection) {
+                                bidSecurityAmount = cleanAmountText(bidSecuritySection.querySelector('.section__info').textContent.trim());
+                            }
+
+                            let contractSecurityAmount = 'Нет данных';
+                            let guaranteePercent = null;
+                            const contractSecuritySection = findSectionByTitle(doc, 'Размер обеспечения исполнения контракта');
+                            if (contractSecuritySection) {
+                                const guaranteeText = contractSecuritySection.querySelector('.section__info').textContent.trim();
+                                contractSecurityAmount = guaranteeText.split('\n')[0].trim();
+                                const percentMatch = contractSecurityAmount.match(/(\d+(?:,\d+)?)\s*%/);
+                                if (percentMatch) {
+                                    guaranteePercent = parseFloat(percentMatch[1].replace(',', '.'));
                                 }
                             }
+
+                            let warrantySecurityAmount = 'Нет данных';
+                            const warrantySecuritySection = findSectionByTitle(doc, 'Размер обеспечения гарантийных обязательств');
+                            if (warrantySecuritySection) {
+                                warrantySecurityAmount = cleanAmountText(warrantySecuritySection.querySelector('.section__info').textContent.trim());
+                            }
+
+                            let advancePayment = 'Нет данных';
+                            const advanceSection = findSectionByTitle(doc, 'Размер аванса');
+                            if (advanceSection) {
+                                advancePayment = advanceSection.querySelector('.section__info').textContent.trim();
+                            }
+
+                            let contractPeriod = 'Нет данных';
+                            const contractSection = findSectionByTitle(doc, 'Срок исполнения контракта');
+                            if (contractSection) {
+                                contractPeriod = contractSection.querySelector('.section__info').textContent.trim().split('\n')[0].trim();
+                            }
+
+                            const procurementData = {
+                                purchaseSubject: purchaseSubject,
+                                maxPrice: maxPrice,
+                                bidSecurityAmount: bidSecurityAmount,
+                                contractSecurityAmount: contractSecurityAmount,
+                                warrantySecurityAmount: warrantySecurityAmount,
+                                advancePayment: advancePayment,
+                                noticeNumber: noticeNumber,
+                                contractPeriod: contractPeriod,
+                                guaranteePercent: guaranteePercent
+                            };
+
+                            log('Успешно загружены данные с госзакупок:', procurementData);
+                            resolve(procurementData);
+
+                        } catch (error) {
+                            log('Ошибка парсинга страницы госзакупок:', error);
+                            reject(new Error('Ошибка парсинга страницы: ' + error.message));
                         }
-
-                        let warrantySecurityAmount = 'Нет данных';
-                        const warrantySecuritySection = findSectionByTitle(doc, 'Размер обеспечения гарантийных обязательств');
-                        if (warrantySecuritySection) warrantySecurityAmount = cleanAmountText(warrantySecuritySection.querySelector('.section__info').textContent.trim());
-
-                        let advancePayment = 'Нет данных';
-                        const advanceSection = findSectionByTitle(doc, 'Размер аванса');
-                        if (advanceSection) advancePayment = advanceSection.querySelector('.section__info').textContent.trim();
-
-                        let applicationDeadline = 'Нет данных';
-                        const deadlineSection = findSectionByTitle(doc, 'Дата и время окончания срока подачи заявок');
-                        if (deadlineSection) applicationDeadline = deadlineSection.querySelector('.section__info').textContent.replace(/\([^)]+\)/g, '').trim();
-
-                        let contractPeriod = 'Нет данных';
-                        const contractSection = findSectionByTitle(doc, 'Срок исполнения контракта');
-                        if (contractSection) contractPeriod = contractSection.querySelector('.section__info').textContent.trim().split('\n')[0].trim();
-
-                        resolve({
-                            purchaseSubject: purchaseSubject,
-                            maxPrice: maxPrice,
-                            bidSecurityAmount: bidSecurityAmount,
-                            contractSecurityAmount: contractSecurityAmount,
-                            warrantySecurityAmount: warrantySecurityAmount,
-                            advancePayment: advancePayment,
-                            noticeNumber: noticeNumber,
-                            applicationDeadline: applicationDeadline,
-                            contractPeriod: contractPeriod,
-                            guaranteePercent: guaranteePercent
-                        });
-                    } catch (e) {
-                        reject(e);
+                    } else {
+                        reject(new Error(`HTTP error: ${response.status}`));
                     }
                 },
                 onerror: function(error) {
-                    reject(error);
-                }
+                    log('Ошибка загрузки страницы госзакупок:', error);
+                    reject(new Error(`Ошибка загрузки: ${error.error}`));
+                },
+                timeout: 15000
             });
         });
     }
@@ -557,51 +618,98 @@
     }
 
     function findFieldElement(fieldName) {
-        const containers = document.querySelectorAll('div.sc-dffb1fbd-0');
+        log(`Поиск элемента поля: "${fieldName}"`);
+
+        const containers = document.querySelectorAll('[class*="sc-"]');
         for (const container of containers) {
-            const titleDiv = container.querySelector('div.sc-dffb1fbd-2');
-            if (titleDiv && titleDiv.textContent.trim() === fieldName) {
-                const valueDiv = container.querySelector('div.sc-dffb1fbd-3');
-                return { container, titleDiv, valueElement: valueDiv };
+            const labelElement = Array.from(container.children).find(child =>
+                child.textContent && child.textContent.trim() === fieldName
+            );
+            if (labelElement) {
+                const valueElement = Array.from(container.children).find(child =>
+                    child !== labelElement && child.textContent && child.textContent.trim() !== ''
+                );
+                if (valueElement) {
+                    return { container: container, titleElement: labelElement, valueElement: valueElement };
+                }
             }
         }
+
+        const allElements = document.querySelectorAll('*');
+        for (const element of allElements) {
+            if (element.textContent && element.textContent.trim() === fieldName) {
+                log(`Найдена метка: "${fieldName}"`, element);
+
+                let currentElement = element.parentElement;
+                let depth = 0;
+
+                while (currentElement && depth < 10) {
+                    const children = Array.from(currentElement.children);
+                    const valueElement = children.find(child =>
+                        child !== element &&
+                        child.textContent &&
+                        child.textContent.trim() !== '' &&
+                        !child.querySelector('button')
+                    );
+
+                    if (valueElement) {
+                        return { container: currentElement, titleElement: element, valueElement: valueElement };
+                    }
+
+                    currentElement = currentElement.parentElement;
+                    depth++;
+                }
+            }
+        }
+
+        log(`Поле "${fieldName}" не найдено`);
         return null;
     }
 
     function getClientData() {
+        log('Получение данных из CRM');
+
         function findValueByTitle(titleText) {
-            const field = findFieldElement(titleText);
-            return field && field.valueElement ? field.valueElement.textContent.trim() : 'Нет данных';
+            return findFieldByLabel(titleText) || 'Нет данных';
         }
 
-        const requirementField = findFieldElement('Потребность');
-        const requirement = requirementField && requirementField.valueElement ? requirementField.valueElement.textContent.trim() : 'Нет данных';
-
-        const advanceField = findFieldElement('Аванс');
+        const requirement = findValueByTitle('Потребность');
+        const advanceField = findFieldByLabel('Аванс');
         let advancePayment = 'Нет данных';
-        if (advanceField && advanceField.valueElement) {
-            const advanceText = advanceField.valueElement.textContent.trim();
-            advancePayment = advanceText.includes('нет') ? 'Нет' : extractAdvanceAmount(advanceText);
+        if (advanceField && advanceField.includes('нет')) {
+            advancePayment = 'Нет';
         }
 
-        return {
-            purchaseSubject: findValueByTitle('Предмет контракта') || 'Нет данных',
-            maxPrice: findValueByTitle('Начальная цена') || 'Нет данных',
-            guaranteeAmount: findValueByTitle('Сумма БГ') || 'Нет данных',
-            noticeNumber: findValueByTitle('Номер извещения') || 'Нет данных',
-            guaranteePeriod: findValueByTitle('Срок') || 'Нет данных',
+        const clientData = {
+            purchaseSubject: findValueByTitle('Предмет контракта'),
+            maxPrice: findValueByTitle('Начальная цена'),
+            guaranteeAmount: findValueByTitle('Сумма БГ'),
+            noticeNumber: findValueByTitle('Номер извещения'),
+            guaranteePeriod: findValueByTitle('Срок БГ') || findValueByTitle('Срок'),
             requirement: requirement,
             advancePayment: advancePayment
         };
+
+        log('Данные из CRM:', clientData);
+        return clientData;
     }
 
     function compareAndHighlight(fieldName, clientValue, procurementValue, additionalInfo = null) {
+        log(`Сравнение поля "${fieldName}": CRM="${clientValue}", Закупки="${procurementValue}"`);
+
         const field = findFieldElement(fieldName);
         if (field && field.valueElement) {
+            log(`Найдено поле для подсветки:`, field.valueElement);
+
             field.valueElement.classList.remove('highlight', 'match', 'warning');
 
-            let tooltipText = procurementValue === 'Нет данных' ? 'Не удалось получить данные с сайта гос. закупок' : 'На сайте гос. закупок: ' + procurementValue;
-            if (additionalInfo !== null && fieldName === 'Сумма БГ') tooltipText += ` (${additionalInfo}% от цены контракта)`;
+            let tooltipText = procurementValue === 'Нет данных' ?
+                'Не удалось получить данные с сайта гос. закупок' :
+                'На сайте гос. закупок: ' + procurementValue;
+
+            if (additionalInfo !== null && fieldName === 'Сумма БГ') {
+                tooltipText += ` (${additionalInfo}% от цены контракта)`;
+            }
 
             if (fieldName === 'Аванс') {
                 if (clientValue === 'Нет' && procurementValue === 'Нет данных') {
@@ -636,59 +744,21 @@
                     field.valueElement.title = tooltipText;
                 }
             }
+        } else {
+            log(`❌ Не удалось найти поле "${fieldName}" для подсветки`);
         }
     }
 
-    if (window.location.href.includes('https://crm.finleo.ru/orders/')) {
-        log('Инициализация на сайте CRM Finleo');
+    if (window.location.href.includes('https://crm.finleo.ru/crm/orders/')) {
+        log('Инициализация на новом сайте CRM Finleo');
         createToggleSwitch();
         createComparisonButton();
-
-        const saveProfileBtn = document.createElement('button');
-        saveProfileBtn.className = 'tm-control-btn tm-profile-btn';
-        saveProfileBtn.textContent = 'Сохранить анкету';
-        saveProfileBtn.onclick = () => {
-            log('Сохранение анкетных данных');
-            const fio = findFieldByLabel('ФИО:');
-            const birthDate = findFieldByLabel('Дата рождения:');
-            const birthPlace = findFieldByLabel('Место рождения:');
-            const passportSeries = findFieldByLabel('Серия паспорта:');
-            const passportNumber = findFieldByLabel('Номер паспорта:');
-            const passportIssueDate = findFieldByLabel('Дата выдачи:');
-            const passportDepartmentCode = findFieldByLabel('Код подразделения:');
-            const registrationAddress = findFieldByLabel('Адрес регистрации:');
-            const bik = findFieldByLabel('БИК:');
-            const accountNumber = findFieldByLabel('р/с:');
-
-            const fioParts = splitFIO(fio);
-
-            const profileData = {
-                fio: fio || '',
-                lastName: fioParts.lastName,
-                firstName: fioParts.firstName,
-                middleName: fioParts.middleName,
-                birthDate: birthDate || '',
-                birthPlace: birthPlace || '',
-                passportSeries: passportSeries || '',
-                passportNumber: passportNumber || '',
-                passportIssueDate: passportIssueDate || '',
-                passportDepartmentCode: passportDepartmentCode || '',
-                registrationAddress: registrationAddress || '',
-                bik: bik || '',
-                accountNumber: accountNumber || ''
-            };
-
-            GM_setValue('bankProfileData', profileData);
-            log('Анкетные данные сохранены', profileData);
-            showStatus('✅ Анкетные данные сохранены!', 3000);
-        };
-        document.body.appendChild(saveProfileBtn);
 
         const saveParamsBtn = document.createElement('button');
         saveParamsBtn.className = 'tm-control-btn tm-save-btn';
         saveParamsBtn.textContent = 'Сохранить параметры';
         saveParamsBtn.onclick = () => {
-            log('Сохранение параметров заявки');
+            log('Сохранение параметров заявки в новом CRM');
             const inn = getInn();
             if (!inn) {
                 log('Ошибка: ИНН не найден');
@@ -696,14 +766,19 @@
                 return;
             }
 
+            log('Поиск полей в CRM');
             const needText = findFieldByLabel('Потребность');
             const notice = findFieldByLabel('Номер извещения');
             const initialPrice = findFieldByLabel('Начальная цена');
             const proposedPrice = findFieldByLabel('Предложенная цена');
             const sum = findFieldByLabel('Сумма БГ');
-            const period = findFieldByLabel('Срок');
+            const period = findFieldByLabel('Срок БГ') || findFieldByLabel('Срок');
             const law = findFieldByLabel('Закон');
             const advance = findFieldByLabel('Аванс');
+
+            log('Найденные значения:', {
+                needText, notice, initialPrice, proposedPrice, sum, period, law, advance
+            });
 
             const guaranteeInfo = getGuaranteeType(needText);
 
@@ -780,70 +855,70 @@
         };
 
         const fillForm = async (fastMode = false) => {
-    log(`Начало заполнения формы (быстрый режим: ${fastMode})`);
-    const data = await GM_getValue('bankRequestData', null);
-    if (!data || !data.inn) {
-        log('Ошибка: Нет сохраненных данных или ИНН');
-        showStatus('❌ Нет сохраненных данных', 5000);
-        return;
-    }
-
-    const status = showStatus('⏳ Начинаем заполнение...', null);
-
-    try {
-        status.textContent = '⏳ Вводим ИНН...';
-        await fillField('input[placeholder="Выберите компанию"]', data.inn);
-        await new Promise(r => setTimeout(r, fastMode ? 500 : 1000));
-
-        const firstOption = await waitForElement('.suggestion', 5000);
-        firstOption.click();
-        await new Promise(r => setTimeout(r, fastMode ? 500 : 1000));
-
-        status.textContent = '⏳ Заполняем основные поля...';
-        await Promise.all([
-            fillField('input[type="email"]', data.email),
-            setSelectValue('select[ng-model="model.data.bankGuaranteeTypeRefId"]', data.guaranteeInfo.ingoType),
-            fillField('input[placeholder="ДД.ММ.ГГГГ"]', data.endDate || new Date(Date.now() + 30 * 86400000).toLocaleDateString('ru-RU')),
-            setSelectValue('select[ng-model="model.data.signingMethodTypeId"]', "1"),
-            fillField('input[ng-model="model.data.purchase.purchaseNumber"]', data.notice)
-        ]);
-
-        status.textContent = '⏳ Ищем извещение...';
-        const searchBtn = await waitForElement('button[ng-click="my.zgrSearch()"]');
-        searchBtn.removeAttribute('disabled');
-        searchBtn.click();
-        await new Promise(r => setTimeout(r, fastMode ? 1500 : 2500));
-
-        status.textContent = '⏳ Вводим суммы...';
-        await Promise.all([
-            fillField('input[ng-model="lot.finalAmount"]', data.price),
-            fillField('input[ng-model="x.bgAmount"]', data.sum)
-        ]);
-
-        if (data.advanceAmount && data.advanceAmount !== '') {
-            status.textContent = '⏳ Заполняем аванс...';
-            const prepaymentCheckbox = await waitForElement('input[id="avans-0"]');
-            if (!prepaymentCheckbox.checked) {
-                prepaymentCheckbox.click();
-                await new Promise(r => setTimeout(r, 500));
+            log(`Начало заполнения формы (быстрый режим: ${fastMode})`);
+            const data = await GM_getValue('bankRequestData', null);
+            if (!data || !data.inn) {
+                log('Ошибка: Нет сохраненных данных или ИНН');
+                showStatus('❌ Нет сохраненных данных', 5000);
+                return;
             }
 
-            const advanceInput = await waitForElement('input[ng-model="lot.contractConditions.prepaymentAmount"]');
-            advanceInput.value = data.advanceAmount;
-            advanceInput.dispatchEvent(new Event('input', {bubbles: true}));
-            await new Promise(r => setTimeout(r, 300));
-        }
+            const status = showStatus('⏳ Начинаем заполнение...', null);
 
-        status.textContent = '✅ Форма заполнена! Проверьте данные';
-        log('Форма успешно заполнена');
-        setTimeout(() => status.remove(), 5000);
+            try {
+                status.textContent = '⏳ Вводим ИНН...';
+                await fillField('input[placeholder="Выберите компанию"]', data.inn);
+                await new Promise(r => setTimeout(r, fastMode ? 500 : 1000));
 
-    } catch (error) {
-        log(`Ошибка при заполнении формы: ${error.message}`, error);
-        status.textContent = `❌ Ошибка: ${error.message || error}`;
-        setTimeout(() => status.remove(), 5000);
-    }
-};
+                const firstOption = await waitForElement('.suggestion', 5000);
+                firstOption.click();
+                await new Promise(r => setTimeout(r, fastMode ? 500 : 1000));
+
+                status.textContent = '⏳ Заполняем основные поля...';
+                await Promise.all([
+                    fillField('input[type="email"]', data.email),
+                    setSelectValue('select[ng-model="model.data.bankGuaranteeTypeRefId"]', data.guaranteeInfo.ingoType),
+                    fillField('input[placeholder="ДД.ММ.ГГГГ"]', data.endDate || new Date(Date.now() + 30 * 86400000).toLocaleDateString('ru-RU')),
+                    setSelectValue('select[ng-model="model.data.signingMethodTypeId"]', "1"),
+                    fillField('input[ng-model="model.data.purchase.purchaseNumber"]', data.notice)
+                ]);
+
+                status.textContent = '⏳ Ищем извещение...';
+                const searchBtn = await waitForElement('button[ng-click="my.zgrSearch()"]');
+                searchBtn.removeAttribute('disabled');
+                searchBtn.click();
+                await new Promise(r => setTimeout(r, fastMode ? 1500 : 2500));
+
+                status.textContent = '⏳ Вводим суммы...';
+                await Promise.all([
+                    fillField('input[ng-model="lot.finalAmount"]', data.price),
+                    fillField('input[ng-model="x.bgAmount"]', data.sum)
+                ]);
+
+                if (data.advanceAmount && data.advanceAmount !== '') {
+                    status.textContent = '⏳ Заполняем аванс...';
+                    const prepaymentCheckbox = await waitForElement('input[id="avans-0"]');
+                    if (!prepaymentCheckbox.checked) {
+                        prepaymentCheckbox.click();
+                        await new Promise(r => setTimeout(r, 500));
+                    }
+
+                    const advanceInput = await waitForElement('input[ng-model="lot.contractConditions.prepaymentAmount"]');
+                    advanceInput.value = data.advanceAmount;
+                    advanceInput.dispatchEvent(new Event('input', {bubbles: true}));
+                    await new Promise(r => setTimeout(r, 300));
+                }
+
+                status.textContent = '✅ Форма заполнена! Проверьте данные';
+                log('Форма успешно заполнена');
+                setTimeout(() => status.remove(), 5000);
+
+            } catch (error) {
+                log(`Ошибка при заполнении формы: ${error.message}`, error);
+                status.textContent = `❌ Ошибка: ${error.message || error}`;
+                setTimeout(() => status.remove(), 5000);
+            }
+        };
 
         const fillProfileInFirstBank = async () => {
             log('Начало заполнения анкетных данных в Ingobank');
@@ -881,127 +956,33 @@
 
                     const firstBankOption = document.querySelector('.suggestions .suggestion');
                     if (firstBankOption) {
-                        log('Выбор первого банка из списка');
                         firstBankOption.click();
-                        await new Promise(r => setTimeout(r, 500));
                     }
                 }
 
-                const accountInput = document.querySelector('input[ng-model*="account.number"]');
-                if (accountInput) {
-                    log(`Заполнение номера счета: ${profileData.accountNumber}`);
-                    accountInput.value = profileData.accountNumber;
-                    accountInput.dispatchEvent(new Event('input', {bubbles: true}));
-                    await new Promise(r => setTimeout(r, 500));
+                await Promise.all([
+                    fillField('input[ng-model="model.data.accountNumber"]', profileData.accountNumber),
+                    fillField('input[ng-model="model.data.lastName"]', profileData.lastName),
+                    fillField('input[ng-model="model.data.firstName"]', profileData.firstName),
+                    fillField('input[ng-model="model.data.middleName"]', profileData.middleName),
+                    fillField('input[ng-model="model.data.birthDate"]', profileData.birthDate),
+                    fillField('input[ng-model="model.data.birthPlace"]', profileData.birthPlace),
+                    fillField('input[ng-model="model.data.passportSeries"]', profileData.passportSeries),
+                    fillField('input[ng-model="model.data.passportNumber"]', profileData.passportNumber),
+                    fillField('input[ng-model="model.data.passportIssueDate"]', profileData.passportIssueDate),
+                    fillField('input[ng-model="model.data.passportDepartmentCode"]', profileData.passportDepartmentCode),
+                    fillField('input[ng-model="model.data.registrationAddress"]', profileData.registrationAddress)
+                ]);
+
+                const saveBtn = document.querySelector('button[ng-click*="save"]');
+                if (saveBtn) {
+                    saveBtn.click();
+                    log('Анкетные данные сохранены');
+                    status.textContent = '✅ Анкетные данные заполнены и сохранены!';
+                } else {
+                    throw new Error('Не найдена кнопка сохранения');
                 }
 
-                const okButton = document.querySelector('.fz-modal__button_main');
-                if (okButton) {
-                    log('Нажатие кнопки OK');
-                    okButton.click();
-                    await new Promise(r => setTimeout(r, 1000));
-                }
-
-                const changeBtn = document.querySelector('.fz-button.blue.bg-blue[ng-click*="onButtonClickHandler"]');
-                if (changeBtn) {
-                    log('Нажатие кнопки изменения');
-                    changeBtn.click();
-                    await new Promise(r => setTimeout(r, 1000));
-                }
-
-                const lastNameInput = document.querySelector('input[ng-model*="lastName"]');
-                if (lastNameInput) {
-                    log(`Заполнение фамилии: ${profileData.lastName}`);
-                    lastNameInput.value = profileData.lastName;
-                    lastNameInput.dispatchEvent(new Event('input', {bubbles: true}));
-                }
-
-                const firstNameInput = document.querySelector('input[ng-model*="firstName"]');
-                if (firstNameInput) {
-                    log(`Заполнение имени: ${profileData.firstName}`);
-                    firstNameInput.value = profileData.firstName;
-                    firstNameInput.dispatchEvent(new Event('input', {bubbles: true}));
-                }
-
-                const middleNameInput = document.querySelector('input[ng-model*="secondName"]');
-                if (middleNameInput) {
-                    log(`Заполнение отчества: ${profileData.middleName}`);
-                    middleNameInput.value = profileData.middleName;
-                    middleNameInput.dispatchEvent(new Event('input', {bubbles: true}));
-                }
-
-                const birthDateInput = document.querySelector('input[ng-model*="birthDate"]');
-                if (birthDateInput) {
-                    log(`Заполнение даты рождения: ${profileData.birthDate}`);
-                    birthDateInput.value = profileData.birthDate;
-                    birthDateInput.dispatchEvent(new Event('input', {bubbles: true}));
-                }
-
-                const birthPlaceInput = document.querySelector('input[ng-model*="birthPlace"]');
-                if (birthPlaceInput) {
-                    log(`Заполнение места рождения: ${profileData.birthPlace}`);
-                    birthPlaceInput.value = profileData.birthPlace;
-                    birthPlaceInput.dispatchEvent(new Event('input', {bubbles: true}));
-                }
-
-                const citizenshipSelect = document.querySelector('select[ng-model*="citizenship"]');
-                if (citizenshipSelect) {
-                    log('Установка гражданства');
-                    citizenshipSelect.value = '0';
-                    citizenshipSelect.dispatchEvent(new Event('change', {bubbles: true}));
-                }
-
-                const passportSeriesInput = document.querySelector('input[ng-model*="series"]');
-                if (passportSeriesInput) {
-                    log(`Заполнение серии паспорта: ${profileData.passportSeries}`);
-                    passportSeriesInput.value = profileData.passportSeries;
-                    passportSeriesInput.dispatchEvent(new Event('input', {bubbles: true}));
-                }
-
-                const passportNumberInput = document.querySelector('input[ng-model*="number"]');
-                if (passportNumberInput) {
-                    log(`Заполнение номера паспорта: ${profileData.passportNumber}`);
-                    passportNumberInput.value = profileData.passportNumber;
-                    passportNumberInput.dispatchEvent(new Event('input', {bubbles: true}));
-                }
-
-                const passportIssueDateInput = document.querySelector('input[ng-model*="issuedDate"]');
-                if (passportIssueDateInput) {
-                    log(`Заполнение даты выдачи паспорта: ${profileData.passportIssueDate}`);
-                    passportIssueDateInput.value = profileData.passportIssueDate;
-                    passportIssueDateInput.dispatchEvent(new Event('input', {bubbles: true}));
-                }
-
-                const passportDepartmentCodeInput = document.querySelector('input[ng-model*="issuingAuthorityCode"]');
-                if (passportDepartmentCodeInput) {
-                    log(`Заполнение кода подразделения: ${profileData.passportDepartmentCode}`);
-                    passportDepartmentCodeInput.value = profileData.passportDepartmentCode;
-                    passportDepartmentCodeInput.dispatchEvent(new Event('input', {bubbles: true}));
-                }
-
-                const passportIssuedByInput = document.querySelector('input[placeholder="Кем выдан"]');
-                if (passportIssuedByInput) {
-                    log('Заполнение кем выдан паспорт');
-                    passportIssuedByInput.value = "Отделом УФМС";
-                    passportIssuedByInput.dispatchEvent(new Event('input', {bubbles: true}));
-                }
-
-                const addressInput = document.querySelector('input[fz-select-address]');
-                if (addressInput) {
-                    log(`Заполнение адреса регистрации: ${profileData.registrationAddress}`);
-                    addressInput.value = profileData.registrationAddress;
-                    addressInput.dispatchEvent(new Event('input', {bubbles: true}));
-                    await new Promise(r => setTimeout(r, 1500));
-
-                    const firstAddressOption = document.querySelector('.suggestions.top .suggestion');
-                    if (firstAddressOption) {
-                        log('Выбор первого адреса из списка');
-                        firstAddressOption.click();
-                    }
-                }
-
-                status.textContent = '✅ Анкетные данные заполнены!';
-                log('Анкетные данные успешно заполнены');
                 setTimeout(() => status.remove(), 5000);
 
             } catch (error) {
@@ -1011,16 +992,21 @@
             }
         };
 
-        const fastBtn = document.createElement('button');
-        fastBtn.className = 'tm-control-btn tm-fast-btn';
-        fastBtn.textContent = 'Быстрое заполнение';
-        fastBtn.onclick = () => fillForm(true);
-        document.body.appendChild(fastBtn);
+        const fillBtn = document.createElement('button');
+        fillBtn.className = 'tm-control-btn tm-fill-btn';
+        fillBtn.textContent = 'Заполнить';
+        fillBtn.onclick = () => fillForm(false);
+        document.body.appendChild(fillBtn);
+
+        const fastFillBtn = document.createElement('button');
+        fastFillBtn.className = 'tm-control-btn tm-fast-btn';
+        fastFillBtn.textContent = 'Быстро заполнить';
+        fastFillBtn.onclick = () => fillForm(true);
+        document.body.appendChild(fastFillBtn);
 
         const profileBtn = document.createElement('button');
         profileBtn.className = 'tm-control-btn tm-profile-btn';
         profileBtn.textContent = 'Заполнить анкету';
-        profileBtn.style.bottom = '150px';
         profileBtn.onclick = fillProfileInFirstBank;
         document.body.appendChild(profileBtn);
     }
@@ -1065,30 +1051,6 @@
             await new Promise(r => setTimeout(r, 300));
         };
 
-        const clickFirstSuggestion = async () => {
-            try {
-                log('Попытка выбора первого предложения из списка');
-                const suggestionsWrapper = await waitForElement('.suggestions-wrapper', 5000);
-                const suggestionsList = suggestionsWrapper.querySelector('.suggestions-suggestions');
-                if (!suggestionsList || suggestionsList.style.display === 'none') {
-                    throw new Error('Список предложений не отображается');
-                }
-
-                const firstSuggestion = suggestionsWrapper.querySelector('.suggestions-suggestion[data-index="0"]');
-                if (!firstSuggestion) {
-                    throw new Error('Не найдено ни одного предложения');
-                }
-
-                firstSuggestion.click();
-                await new Promise(r => setTimeout(r, 500));
-                log('Первое предложение из списка успешно выбрано');
-                return true;
-            } catch (error) {
-                log(`Ошибка при выборе предложения: ${error.message}`);
-                return false;
-            }
-        };
-
         const fillRealistBankForm = async () => {
             log('Начало заполнения формы в RealistBank');
             const data = await GM_getValue('bankRequestData', null);
@@ -1116,11 +1078,6 @@
                 companyInput.value = data.inn;
                 companyInput.dispatchEvent(new Event('input', {bubbles: true}));
                 await new Promise(r => setTimeout(r, 1500));
-
-                const success = await clickFirstSuggestion();
-                if (!success) {
-                    throw new Error('Не удалось выбрать компанию из списка');
-                }
 
                 status.textContent = '⏳ Вводим номер извещения...';
                 await fillField('#auction_number', data.notice);
@@ -1151,6 +1108,7 @@
         realistBtn.onclick = fillRealistBankForm;
         document.body.appendChild(realistBtn);
     }
+
     if (window.location.href.includes('bg.alfabank.ru/aft-ui/order')) {
         log('Инициализация на сайте Альфа-Банка');
         createToggleSwitch();
