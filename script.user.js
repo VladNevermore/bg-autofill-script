@@ -994,7 +994,6 @@
 
         const fillBtn = document.createElement('button');
         fillBtn.className = 'tm-control-btn tm-fill-btn';
-        fillBtn.textContent = 'Заполнить';
         fillBtn.onclick = () => fillForm(false);
         document.body.appendChild(fillBtn);
 
@@ -1006,7 +1005,6 @@
 
         const profileBtn = document.createElement('button');
         profileBtn.className = 'tm-control-btn tm-profile-btn';
-        profileBtn.textContent = 'Заполнить анкету';
         profileBtn.onclick = fillProfileInFirstBank;
         document.body.appendChild(profileBtn);
     }
