@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автозаполнение и проверка параметров
 // @namespace    http://tampermonkey.net/
-// @version      14.4
+// @version      14.5
 // @description  Автозаполнение форм и сравнение параметров
 // @match        https://crm.finleo.ru/crm/orders/*
 // @match        https://market.bg.ingobank.ru/tasks*
@@ -992,10 +992,6 @@
             }
         };
 
-        const fillBtn = document.createElement('button');
-        fillBtn.className = 'tm-control-btn tm-fill-btn';
-        fillBtn.onclick = () => fillForm(false);
-        document.body.appendChild(fillBtn);
 
         const fastFillBtn = document.createElement('button');
         fastFillBtn.className = 'tm-control-btn tm-fast-btn';
@@ -1003,10 +999,6 @@
         fastFillBtn.onclick = () => fillForm(true);
         document.body.appendChild(fastFillBtn);
 
-        const profileBtn = document.createElement('button');
-        profileBtn.className = 'tm-control-btn tm-profile-btn';
-        profileBtn.onclick = fillProfileInFirstBank;
-        document.body.appendChild(profileBtn);
     }
 
     if (window.location.href.includes('bg.realistbank.ru/new_ticket')) {
