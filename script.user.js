@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автозаполнение и проверка параметров
 // @namespace    http://tampermonkey.net/
-// @version      14.5
+// @version      15
 // @description  Автозаполнение форм и сравнение параметров
 // @match        https://crm.finleo.ru/crm/orders/*
 // @match        https://market.bg.ingobank.ru/tasks*
@@ -163,6 +163,11 @@
         return statusEl;
     };
 
+    const normalizeNumber = (text) => {
+        if (!text) return '';
+        return text.replace(/\s/g, '').replace(/,/g, '.').replace(/[^\d.]/g, '');
+    };
+
     const extractNumber = (text) => {
         if (!text) return '';
         const cleaned = text.replace(/[^\d\s,.]/g, '');
@@ -189,18 +194,14 @@
 
     const extractStartDate = (text) => {
         if (!text) return '';
-        const parts = text.split('—');
-        if (parts.length < 2) return '';
-        const dateMatch = parts[0].trim().match(/(\d{2}\.\d{2}\.\d{4})/);
-        return dateMatch ? dateMatch[0] : '';
+        const dates = text.match(/(\d{2}\.\d{2}\.\d{4})/g);
+        return dates && dates.length > 0 ? dates[0] : '';
     };
 
     const extractEndDate = (text) => {
         if (!text) return '';
-        const parts = text.split('—');
-        if (parts.length < 2) return '';
-        const dateMatch = parts[1].trim().match(/(\d{2}\.\d{2}\.\d{4})/);
-        return dateMatch ? dateMatch[0] : '';
+        const dates = text.match(/(\d{2}\.\d{2}\.\d{4})/g);
+        return dates && dates.length > 1 ? dates[1] : (dates && dates.length > 0 ? dates[0] : '');
     };
 
     const extractLaw = (text) => {
@@ -210,20 +211,47 @@
         return match ? match[1] : '';
     };
 
+    const parseDate = (dateStr) => {
+        if (!dateStr) return null;
+        const cleaned = dateStr.replace(/[^\d.]/g, '');
+        const parts = cleaned.split('.');
+        if (parts.length !== 3) return null;
+        return new Date(parts[2], parts[1] - 1, parts[0]);
+    };
+
+    const addMonths = (date, months) => {
+        const result = new Date(date);
+        result.setMonth(result.getMonth() + months);
+        return result;
+    };
+
+    const getCleanedElementText = (element) => {
+        if (!element) return '';
+        const clone = element.cloneNode(true);
+        const buttons = clone.querySelectorAll('button');
+        buttons.forEach(btn => btn.remove());
+        const chips = clone.querySelectorAll('[class*="Chip"], [class*="chip"]');
+        chips.forEach(chip => chip.remove());
+        return clone.textContent.trim();
+    };
+
     const findFieldByLabel = (labelText) => {
         log(`Поиск поля по метке: "${labelText}"`);
 
         const containers = document.querySelectorAll('[class*="sc-"]');
         for (const container of containers) {
-            const labelElement = Array.from(container.children).find(child =>
-                child.textContent && child.textContent.trim() === labelText
-            );
+            const labelElement = Array.from(container.children).find(child => {
+                const text = getCleanedElementText(child);
+                return text && text === labelText;
+            });
             if (labelElement) {
-                const valueElement = Array.from(container.children).find(child =>
-                    child !== labelElement && child.textContent && child.textContent.trim() !== ''
-                );
+                const valueElement = Array.from(container.children).find(child => {
+                    if (child === labelElement) return false;
+                    const text = getCleanedElementText(child);
+                    return text && text !== '';
+                });
                 if (valueElement) {
-                    const result = valueElement.textContent.trim();
+                    const result = getCleanedElementText(valueElement);
                     log(`Найдено значение для "${labelText}": "${result}"`);
                     return result;
                 }
@@ -232,7 +260,8 @@
 
         const allElements = document.querySelectorAll('*');
         for (const element of allElements) {
-            if (element.textContent && element.textContent.trim() === labelText) {
+            const elementText = getCleanedElementText(element);
+            if (elementText && elementText === labelText) {
                 log(`Найдена метка: "${labelText}"`, element);
 
                 let currentElement = element.parentElement;
@@ -240,20 +269,14 @@
 
                 while (currentElement && depth < 10) {
                     const children = Array.from(currentElement.children);
-                    const valueElement = children.find(child =>
-                        child !== element &&
-                        child.textContent &&
-                        child.textContent.trim() !== '' &&
-                        !child.querySelector('button')
-                    );
+                    const valueElement = children.find(child => {
+                        if (child === element) return false;
+                        const text = getCleanedElementText(child);
+                        return text && text !== '';
+                    });
 
                     if (valueElement) {
-                        const clone = valueElement.cloneNode(true);
-                        const buttons = clone.querySelectorAll('button');
-                        buttons.forEach(btn => btn.remove());
-                        const chips = clone.querySelectorAll('[class*="Chip"], [class*="chip"]');
-                        chips.forEach(chip => chip.remove());
-                        const result = clone.textContent.trim();
+                        const result = getCleanedElementText(valueElement);
                         log(`Найдено значение для "${labelText}": "${result}"`);
                         return result;
                     }
@@ -265,15 +288,10 @@
                 let nextElement = element.nextElementSibling;
                 depth = 0;
                 while (nextElement && depth < 5) {
-                    if (nextElement.textContent && nextElement.textContent.trim() !== '') {
-                        const clone = nextElement.cloneNode(true);
-                        const buttons = clone.querySelectorAll('button');
-                        buttons.forEach(btn => btn.remove());
-                        const chips = clone.querySelectorAll('[class*="Chip"], [class*="chip"]');
-                        chips.forEach(chip => chip.remove());
-                        const result = clone.textContent.trim();
-                        log(`Найдено значение для "${labelText}" в соседнем элементе: "${result}"`);
-                        return result;
+                    const text = getCleanedElementText(nextElement);
+                    if (text && text !== '') {
+                        log(`Найдено значение для "${labelText}" в соседнем элементе: "${text}"`);
+                        return text;
                     }
                     nextElement = nextElement.nextElementSibling;
                     depth++;
@@ -288,7 +306,6 @@
     const getInn = () => {
         log('Поиск ИНН');
 
-        // Ищем ИНН в элементах с классом MuiTypography-caption
         const captionElements = document.querySelectorAll('.MuiTypography-caption');
         for (const element of captionElements) {
             if (element.textContent && element.textContent.includes('ИНН')) {
@@ -301,7 +318,6 @@
             }
         }
 
-        // Ищем ИНН в элементах с классом sc-bRKDuR
         const scElements = document.querySelectorAll('.sc-bRKDuR');
         for (const element of scElements) {
             if (element.textContent && element.textContent.includes('ИНН')) {
@@ -314,7 +330,6 @@
             }
         }
 
-        // Резервный поиск во всех элементах
         const elementsWithInn = document.querySelectorAll('*');
         for (const element of elementsWithInn) {
             if (element.textContent && element.textContent.includes('ИНН')) {
@@ -474,15 +489,15 @@
             compareAndHighlight('Номер извещения', clientData.noticeNumber, procurementData.noticeNumber);
             compareAndHighlight('Предмет контракта', clientData.purchaseSubject, procurementData.purchaseSubject);
             compareAndHighlight('Начальная цена', clientData.maxPrice, procurementData.maxPrice);
-            compareAndHighlight('Срок БГ', clientData.guaranteePeriod, procurementData.contractPeriod);
+            compareAndHighlightGuaranteePeriod(clientData.guaranteePeriod, procurementData, requirementType);
 
             if (requirementType === 'participation') {
-                compareAndHighlight('Сумма БГ', clientData.guaranteeAmount, procurementData.bidSecurityAmount);
+                compareAndHighlightGuaranteeAmount('Сумма БГ', clientData.guaranteeAmount, procurementData.bidSecurityAmount, clientData, procurementData, requirementType);
             } else if (requirementType === 'execution') {
-                compareAndHighlight('Сумма БГ', clientData.guaranteeAmount, procurementData.contractSecurityAmount, procurementData.guaranteePercent);
+                compareAndHighlightGuaranteeAmount('Сумма БГ', clientData.guaranteeAmount, procurementData.contractSecurityAmount, clientData, procurementData, requirementType);
                 compareAndHighlight('Аванс', clientData.advancePayment, procurementData.advancePayment);
             } else if (requirementType === 'warranty') {
-                compareAndHighlight('Сумма БГ', clientData.guaranteeAmount, procurementData.warrantySecurityAmount);
+                compareAndHighlightGuaranteeAmount('Сумма БГ', clientData.guaranteeAmount, procurementData.warrantySecurityAmount, clientData, procurementData, requirementType);
             }
 
             showStatus('✅ Сравнение завершено!', 5000);
@@ -490,6 +505,133 @@
         } catch (error) {
             console.error('Ошибка при сравнении параметров:', error);
             showStatus('❌ Ошибка при сравнении параметров: ' + error.message, 5000);
+        }
+    }
+
+    function compareAndHighlightGuaranteeAmount(fieldName, clientValue, procurementValue, clientData, procurementData, requirementType) {
+        log(`Сравнение суммы БГ: CRM="${clientValue}", Закупки="${procurementValue}"`);
+
+        const field = findFieldElement(fieldName);
+        if (field && field.valueElement) {
+            log(`Найдено поле для подсветки:`, field.valueElement);
+
+            field.valueElement.classList.remove('highlight', 'match', 'warning');
+
+            let normalizedClient = normalizeNumber(clientValue);
+            let normalizedProcurement = normalizeNumber(procurementValue);
+            let tooltipText = '';
+
+            if (procurementValue.includes('%')) {
+                const percentMatch = procurementValue.match(/(\d+(?:,\d+)?)\s*%/);
+                if (percentMatch) {
+                    const percent = parseFloat(percentMatch[1].replace(',', '.'));
+                    let priceValue = 0;
+
+                    if (requirementType === 'participation') {
+                        priceValue = parseFloat(normalizeNumber(clientData.maxPrice));
+                    } else if (requirementType === 'execution' || requirementType === 'warranty') {
+                        const proposedPrice = findFieldByLabel('Предложенная цена');
+                        priceValue = parseFloat(normalizeNumber(proposedPrice || clientData.maxPrice));
+                    }
+
+                    if (!isNaN(percent) && !isNaN(priceValue) && priceValue > 0) {
+                        const calculatedAmount = Math.round(priceValue * percent / 100);
+                        normalizedProcurement = calculatedAmount.toString();
+                        tooltipText = `На сайте гос. закупок указан процент: ${percent}%. Рассчитанная сумма: ${calculatedAmount.toLocaleString('ru-RU')} ₽`;
+                    }
+                }
+            }
+
+            if (!tooltipText) {
+                tooltipText = procurementValue === 'Нет данных' ?
+                    'Не удалось получить данные с сайта гос. закупок' :
+                    'На сайте гос. закупок: ' + procurementValue;
+            }
+
+            const clientNum = parseFloat(normalizedClient);
+            const procurementNum = parseFloat(normalizedProcurement);
+
+            if (!isNaN(clientNum) && !isNaN(procurementNum)) {
+                if (Math.abs(clientNum - procurementNum) < 1) {
+                    field.valueElement.classList.add('match');
+                    field.valueElement.title = 'Совпадает с сайтом гос. закупок: ' + (tooltipText || procurementValue);
+                } else if (procurementValue === 'Нет данных') {
+                    field.valueElement.classList.add('warning');
+                    field.valueElement.title = tooltipText;
+                } else {
+                    field.valueElement.classList.add('highlight');
+                    field.valueElement.title = tooltipText;
+                }
+            } else if (procurementValue === 'Нет данных') {
+                field.valueElement.classList.add('warning');
+                field.valueElement.title = tooltipText;
+            } else {
+                field.valueElement.classList.add('highlight');
+                field.valueElement.title = tooltipText;
+            }
+        } else {
+            log(`❌ Не удалось найти поле "${fieldName}" для подсветки`);
+        }
+    }
+
+    function compareAndHighlightGuaranteePeriod(clientValue, procurementData, requirementType) {
+        log(`Сравнение срока БГ: CRM="${clientValue}", Закупки="${JSON.stringify(procurementData)}"`);
+
+        const fieldNames = ['Срок БГ', 'Срок'];
+        let field = null;
+
+        for (const fieldName of fieldNames) {
+            field = findFieldElement(fieldName);
+            if (field) break;
+        }
+
+        if (field && field.valueElement) {
+            log(`Найдено поле для подсветки:`, field.valueElement);
+
+            field.valueElement.classList.remove('highlight', 'match', 'warning');
+
+            const clientEndDate = extractEndDate(clientValue);
+            const clientDate = parseDate(clientEndDate);
+
+            if (!clientDate) {
+                log(`Не удалось распарсить дату: ${clientEndDate}`);
+                field.valueElement.classList.add('warning');
+                field.valueElement.title = 'Не удалось распознать дату окончания срока БГ';
+                return;
+            }
+
+            let procurementDate = null;
+            let minRequiredDate = null;
+            let tooltipText = '';
+
+            if (requirementType === 'participation' && procurementData.applicationEndDate !== 'Нет данных') {
+                procurementDate = parseDate(procurementData.applicationEndDate);
+                if (procurementDate) {
+                    minRequiredDate = addMonths(procurementDate, 1);
+                    tooltipText = `Минимальный срок: ${minRequiredDate.toLocaleDateString('ru-RU')} (окончание подачи заявок ${procurementData.applicationEndDate} + 1 месяц)`;
+                }
+            } else if ((requirementType === 'execution' || requirementType === 'warranty') && procurementData.contractEndDate !== 'Нет данных') {
+                procurementDate = parseDate(procurementData.contractEndDate);
+                if (procurementDate) {
+                    minRequiredDate = addMonths(procurementDate, 1);
+                    tooltipText = `Минимальный срок: ${minRequiredDate.toLocaleDateString('ru-RU')} (окончание контракта ${procurementData.contractEndDate} + 1 месяц)`;
+                }
+            }
+
+            if (minRequiredDate) {
+                if (clientDate >= minRequiredDate) {
+                    field.valueElement.classList.add('match');
+                    field.valueElement.title = `Срок соответствует требованиям! ${tooltipText}`;
+                } else {
+                    field.valueElement.classList.add('highlight');
+                    field.valueElement.title = `Срок меньше требуемого! ${tooltipText}`;
+                }
+            } else {
+                field.valueElement.classList.add('warning');
+                field.valueElement.title = 'Не удалось проверить срок (нет данных с сайта закупок)';
+            }
+        } else {
+            log(`❌ Не удалось найти поле для срока БГ`);
         }
     }
 
@@ -540,25 +682,19 @@
                             let bidSecurityAmount = 'Нет данных';
                             const bidSecuritySection = findSectionByTitle(doc, 'Размер обеспечения заявки');
                             if (bidSecuritySection) {
-                                bidSecurityAmount = cleanAmountText(bidSecuritySection.querySelector('.section__info').textContent.trim());
+                                bidSecurityAmount = bidSecuritySection.querySelector('.section__info').textContent.trim();
                             }
 
                             let contractSecurityAmount = 'Нет данных';
-                            let guaranteePercent = null;
                             const contractSecuritySection = findSectionByTitle(doc, 'Размер обеспечения исполнения контракта');
                             if (contractSecuritySection) {
-                                const guaranteeText = contractSecuritySection.querySelector('.section__info').textContent.trim();
-                                contractSecurityAmount = guaranteeText.split('\n')[0].trim();
-                                const percentMatch = contractSecurityAmount.match(/(\d+(?:,\d+)?)\s*%/);
-                                if (percentMatch) {
-                                    guaranteePercent = parseFloat(percentMatch[1].replace(',', '.'));
-                                }
+                                contractSecurityAmount = contractSecuritySection.querySelector('.section__info').textContent.trim();
                             }
 
                             let warrantySecurityAmount = 'Нет данных';
                             const warrantySecuritySection = findSectionByTitle(doc, 'Размер обеспечения гарантийных обязательств');
                             if (warrantySecuritySection) {
-                                warrantySecurityAmount = cleanAmountText(warrantySecuritySection.querySelector('.section__info').textContent.trim());
+                                warrantySecurityAmount = warrantySecuritySection.querySelector('.section__info').textContent.trim();
                             }
 
                             let advancePayment = 'Нет данных';
@@ -573,6 +709,25 @@
                                 contractPeriod = contractSection.querySelector('.section__info').textContent.trim().split('\n')[0].trim();
                             }
 
+                            let applicationEndDate = 'Нет данных';
+                            const applicationEndSection = findSectionByTitle(doc, 'Дата и время окончания срока подачи заявок');
+                            if (applicationEndSection) {
+                                const dateTimeText = applicationEndSection.querySelector('.section__info').textContent.trim();
+                                const dateMatch = dateTimeText.match(/(\d{2}\.\d{2}\.\d{4})/);
+                                if (dateMatch) {
+                                    applicationEndDate = dateMatch[0];
+                                }
+                            }
+
+                            let contractEndDate = 'Нет данных';
+                            if (contractSection) {
+                                const contractPeriodText = contractSection.querySelector('.section__info').textContent.trim();
+                                const dateMatch = contractPeriodText.match(/(\d{2}\.\d{2}\.\d{4})/);
+                                if (dateMatch) {
+                                    contractEndDate = dateMatch[0];
+                                }
+                            }
+
                             const procurementData = {
                                 purchaseSubject: purchaseSubject,
                                 maxPrice: maxPrice,
@@ -582,7 +737,8 @@
                                 advancePayment: advancePayment,
                                 noticeNumber: noticeNumber,
                                 contractPeriod: contractPeriod,
-                                guaranteePercent: guaranteePercent
+                                applicationEndDate: applicationEndDate,
+                                contractEndDate: contractEndDate
                             };
 
                             log('Успешно загружены данные с госзакупок:', procurementData);
@@ -613,22 +769,21 @@
         });
     }
 
-    function cleanAmountText(text) {
-        return text.replace(/[^\d,.]/g, '').replace(/\s/g, '').replace(',', '.');
-    }
-
     function findFieldElement(fieldName) {
         log(`Поиск элемента поля: "${fieldName}"`);
 
         const containers = document.querySelectorAll('[class*="sc-"]');
         for (const container of containers) {
-            const labelElement = Array.from(container.children).find(child =>
-                child.textContent && child.textContent.trim() === fieldName
-            );
+            const labelElement = Array.from(container.children).find(child => {
+                const text = getCleanedElementText(child);
+                return text && text === fieldName;
+            });
             if (labelElement) {
-                const valueElement = Array.from(container.children).find(child =>
-                    child !== labelElement && child.textContent && child.textContent.trim() !== ''
-                );
+                const valueElement = Array.from(container.children).find(child => {
+                    if (child === labelElement) return false;
+                    const text = getCleanedElementText(child);
+                    return text && text !== '';
+                });
                 if (valueElement) {
                     return { container: container, titleElement: labelElement, valueElement: valueElement };
                 }
@@ -637,7 +792,8 @@
 
         const allElements = document.querySelectorAll('*');
         for (const element of allElements) {
-            if (element.textContent && element.textContent.trim() === fieldName) {
+            const elementText = getCleanedElementText(element);
+            if (elementText && elementText === fieldName) {
                 log(`Найдена метка: "${fieldName}"`, element);
 
                 let currentElement = element.parentElement;
@@ -645,12 +801,11 @@
 
                 while (currentElement && depth < 10) {
                     const children = Array.from(currentElement.children);
-                    const valueElement = children.find(child =>
-                        child !== element &&
-                        child.textContent &&
-                        child.textContent.trim() !== '' &&
-                        !child.querySelector('button')
-                    );
+                    const valueElement = children.find(child => {
+                        if (child === element) return false;
+                        const text = getCleanedElementText(child);
+                        return text && text !== '';
+                    });
 
                     if (valueElement) {
                         return { container: currentElement, titleElement: element, valueElement: valueElement };
@@ -676,7 +831,7 @@
         const requirement = findValueByTitle('Потребность');
         const advanceField = findFieldByLabel('Аванс');
         let advancePayment = 'Нет данных';
-        if (advanceField && advanceField.includes('нет')) {
+        if (advanceField && advanceField.toLowerCase().includes('нет')) {
             advancePayment = 'Нет';
         }
 
@@ -707,10 +862,6 @@
                 'Не удалось получить данные с сайта гос. закупок' :
                 'На сайте гос. закупок: ' + procurementValue;
 
-            if (additionalInfo !== null && fieldName === 'Сумма БГ') {
-                tooltipText += ` (${additionalInfo}% от цены контракта)`;
-            }
-
             if (fieldName === 'Аванс') {
                 if (clientValue === 'Нет' && procurementValue === 'Нет данных') {
                     field.valueElement.classList.add('match');
@@ -719,8 +870,8 @@
                     field.valueElement.classList.add('highlight');
                     field.valueElement.title = 'На сайте гос. закупок указан аванс: ' + procurementValue;
                 } else if (clientValue !== 'Нет' && procurementValue === 'Нет данных') {
-                    field.valueElement.classList.add('warning');
-                    field.valueElement.title = 'Не удалось проверить аванс на сайте гос. закупок';
+                    field.valueElement.classList.add('match');
+                    field.valueElement.title = 'На сайте гос. закупок аванс не указан';
                 } else {
                     const clientPercent = parseFloat(clientValue.replace('%', '').trim());
                     const procurementPercent = parseFloat(procurementValue.replace('%', '').replace(',', '.').trim());
@@ -731,6 +882,23 @@
                         field.valueElement.classList.add('highlight');
                         field.valueElement.title = 'Процент аванса отличается: ' + procurementValue;
                     }
+                }
+            } else if (fieldName === 'Начальная цена') {
+                const normalizedClient = normalizeNumber(clientValue);
+                const normalizedProcurement = normalizeNumber(procurementValue);
+
+                const clientNum = parseFloat(normalizedClient);
+                const procurementNum = parseFloat(normalizedProcurement);
+
+                if (!isNaN(clientNum) && !isNaN(procurementNum) && Math.abs(clientNum - procurementNum) < 1) {
+                    field.valueElement.classList.add('match');
+                    field.valueElement.title = 'Совпадает с сайтом гос. закупок: ' + procurementValue;
+                } else if (procurementValue === 'Нет данных') {
+                    field.valueElement.classList.add('warning');
+                    field.valueElement.title = tooltipText;
+                } else {
+                    field.valueElement.classList.add('highlight');
+                    field.valueElement.title = tooltipText;
                 }
             } else {
                 if (clientValue === procurementValue) {
@@ -920,85 +1088,11 @@
             }
         };
 
-        const fillProfileInFirstBank = async () => {
-            log('Начало заполнения анкетных данных в Ingobank');
-            const profileData = await GM_getValue('bankProfileData', null);
-            if (!profileData) {
-                log('Ошибка: Нет сохраненных анкетных данных');
-                showStatus('❌ Нет сохраненных анкетных данных', 5000);
-                return;
-            }
-
-            const status = showStatus('⏳ Заполняем анкетные данные...', null);
-
-            try {
-                const editBtn = document.querySelector('.fz-two-buttons-ctn.blue button');
-                const addBtn = document.querySelector('.fz-button.blue.bg-blue[ng-click*="onButtonClickHandler"]');
-
-                if (editBtn) {
-                    log('Найдена кнопка редактирования');
-                    editBtn.click();
-                } else if (addBtn) {
-                    log('Найдена кнопка добавления');
-                    addBtn.click();
-                } else {
-                    throw new Error('Не найдена кнопка изменения/добавления');
-                }
-
-                await new Promise(r => setTimeout(r, 1000));
-
-                const bankInput = document.querySelector('input[fz-select-bank]');
-                if (bankInput) {
-                    log(`Заполнение БИК: ${profileData.bik}`);
-                    bankInput.value = profileData.bik;
-                    bankInput.dispatchEvent(new Event('input', {bubbles: true}));
-                    await new Promise(r => setTimeout(r, 1500));
-
-                    const firstBankOption = document.querySelector('.suggestions .suggestion');
-                    if (firstBankOption) {
-                        firstBankOption.click();
-                    }
-                }
-
-                await Promise.all([
-                    fillField('input[ng-model="model.data.accountNumber"]', profileData.accountNumber),
-                    fillField('input[ng-model="model.data.lastName"]', profileData.lastName),
-                    fillField('input[ng-model="model.data.firstName"]', profileData.firstName),
-                    fillField('input[ng-model="model.data.middleName"]', profileData.middleName),
-                    fillField('input[ng-model="model.data.birthDate"]', profileData.birthDate),
-                    fillField('input[ng-model="model.data.birthPlace"]', profileData.birthPlace),
-                    fillField('input[ng-model="model.data.passportSeries"]', profileData.passportSeries),
-                    fillField('input[ng-model="model.data.passportNumber"]', profileData.passportNumber),
-                    fillField('input[ng-model="model.data.passportIssueDate"]', profileData.passportIssueDate),
-                    fillField('input[ng-model="model.data.passportDepartmentCode"]', profileData.passportDepartmentCode),
-                    fillField('input[ng-model="model.data.registrationAddress"]', profileData.registrationAddress)
-                ]);
-
-                const saveBtn = document.querySelector('button[ng-click*="save"]');
-                if (saveBtn) {
-                    saveBtn.click();
-                    log('Анкетные данные сохранены');
-                    status.textContent = '✅ Анкетные данные заполнены и сохранены!';
-                } else {
-                    throw new Error('Не найдена кнопка сохранения');
-                }
-
-                setTimeout(() => status.remove(), 5000);
-
-            } catch (error) {
-                log(`Ошибка при заполнении анкетных данных: ${error.message}`, error);
-                status.textContent = `❌ Ошибка: ${error.message || error}`;
-                setTimeout(() => status.remove(), 5000);
-            }
-        };
-
-
         const fastFillBtn = document.createElement('button');
         fastFillBtn.className = 'tm-control-btn tm-fast-btn';
         fastFillBtn.textContent = 'Быстро заполнить';
         fastFillBtn.onclick = () => fillForm(true);
         document.body.appendChild(fastFillBtn);
-
     }
 
     if (window.location.href.includes('bg.realistbank.ru/new_ticket')) {
