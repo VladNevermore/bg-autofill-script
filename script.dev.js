@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автозаполнение и проверка параметров DEV NEW
 // @namespace    http://tampermonkey.net/
-// @version      15.5
+// @version      15.7
 // @description  Автозаполнение форм и сравнение параметров
 // @match        https://crm.finleo.ru/crm/orders/*
 // @match        https://market.bg.ingobank.ru/tasks*
@@ -22,6 +22,34 @@
 
 (function() {
     'use strict';
+
+    const testData = {
+        inn: '532117984747',
+        notice: '0365300050225000167',
+        period: '31.10.2025 — 31.01.2029 / 1188 дн.',
+        startDate: '31.10.2025',
+        endDate: '31.01.2029',
+        price: '1500000',
+        sum: '75000',
+        law: '44',
+        advanceAmount: '300000',
+        initialPrice: '1500000',
+        proposedPrice: '1450000',
+        email: "b.documents@bk.ru",
+        guaranteeInfo: {
+            ingoType: '1',
+            bank2Type: 'EXEC',
+            realistType: '2',
+            priceField: 'Предложенная цена',
+            proposedPriceField: 'Предложенная цена'
+        }
+    };
+
+    const loadTestData = () => {
+        GM_setValue('bankRequestData', testData);
+        console.log('Тестовые данные загружены:', testData);
+        showStatus('✅ Тестовые данные загружены!', 3000);
+    };
 
     GM_addStyle(`
         .tm-control-btn {
@@ -48,10 +76,11 @@
         .tm-like-btn { background: #FF9800; color: white; bottom: 260px; right: 20px; }
         .tm-realist-btn { background: #607D8B; color: white; bottom: 320px; right: 20px; }
         .tm-compare-btn { background: #17a2b8; color: white; bottom: 380px; right: 20px; }
+        .tm-test-btn { background: #795548; color: white; bottom: 440px; right: 20px; }
         .tm-status {
             position: fixed;
             z-index: 9998;
-            bottom: 440px;
+            bottom: 500px;
             right: 20px;
             background: #333;
             color: white;
@@ -909,10 +938,19 @@
         }
     }
 
+    function createTestDataButton() {
+        const testDataBtn = document.createElement('button');
+        testDataBtn.className = 'tm-control-btn tm-test-btn';
+        testDataBtn.textContent = 'Тестовые данные';
+        testDataBtn.onclick = loadTestData;
+        document.body.appendChild(testDataBtn);
+    }
+
     if (window.location.href.includes('https://crm.finleo.ru/crm/orders/')) {
         log('Инициализация на новом сайте CRM Finleo');
         createToggleSwitch();
         createComparisonButton();
+        createTestDataButton();
 
         const saveParamsBtn = document.createElement('button');
         saveParamsBtn.className = 'tm-control-btn tm-save-btn';
@@ -977,6 +1015,7 @@
     if (window.location.href.includes('market.bg.ingobank.ru/tasks')) {
         log('Инициализация на сайте Ingobank');
         createToggleSwitch();
+        createTestDataButton();
 
         const waitForElement = (selector, timeout = 15000) => {
             log(`Ожидание элемента: ${selector}`);
@@ -1090,6 +1129,7 @@
     if (window.location.href.includes('bg.realistbank.ru/new_ticket')) {
         log('Инициализация на сайте RealistBank');
         createToggleSwitch();
+        createTestDataButton();
 
         const waitForElement = (selector, timeout = 15000) => {
             log(`Ожидание элемента: ${selector}`);
@@ -1133,7 +1173,7 @@
                 log('Ожидание появления списка компаний');
                 await new Promise(r => setTimeout(r, 2000));
                 
-                const firstCompany = await waitForElement('.gsa-dadata-company-suggestion', 5000);
+                const firstCompany = await waitForElement('.suggestions-suggestion', 5000);
                 log('Найден первый вариант компании, выбираем его');
                 firstCompany.click();
                 await new Promise(r => setTimeout(r, 1000));
@@ -1144,27 +1184,45 @@
             }
         };
 
-        const activateDateField = async (selector) => {
+        const fillDateField = async (selector, value) => {
             try {
-                log('Активация поля даты');
+                log(`Заполнение поля даты ${selector} значением: ${value}`);
                 const dateField = await waitForElement(selector);
                 
                 dateField.focus();
-                dateField.click();
+                await new Promise(r => setTimeout(r, 200));
+                
+                dateField.value = '';
+                await new Promise(r => setTimeout(r, 100));
+                
+                dateField.value = value;
+                await new Promise(r => setTimeout(r, 100));
+                
+                dateField.dispatchEvent(new Event('input', {bubbles: true}));
+                dateField.dispatchEvent(new Event('change', {bubbles: true}));
+                dateField.dispatchEvent(new Event('blur', {bubbles: true}));
+                
+                await new Promise(r => setTimeout(r, 500));
+                
+                dateField.focus();
+                await new Promise(r => setTimeout(r, 200));
+                
+                dateField.select();
+                await new Promise(r => setTimeout(r, 200));
+                
+                dateField.dispatchEvent(new Event('focus', {bubbles: true}));
+                dateField.dispatchEvent(new Event('click', {bubbles: true}));
+                
                 await new Promise(r => setTimeout(r, 500));
                 
                 dateField.blur();
                 await new Promise(r => setTimeout(r, 300));
                 
-                const otherField = document.querySelector('#bg_sum');
-                if (otherField) {
-                    otherField.focus();
-                    otherField.blur();
-                }
+                document.activeElement && document.activeElement.blur();
                 
                 return true;
             } catch (error) {
-                log('Ошибка при активации поля даты', error);
+                log('Ошибка при заполнении поля даты', error);
                 return false;
             }
         };
@@ -1195,6 +1253,7 @@
                 const companyInput = await waitForElement('.gsa-dadata-company-name');
                 companyInput.value = data.inn;
                 companyInput.dispatchEvent(new Event('input', {bubbles: true}));
+                companyInput.dispatchEvent(new Event('change', {bubbles: true}));
                 
                 await selectFirstCompany();
 
@@ -1205,8 +1264,7 @@
                 await fillField('#bg_sum', data.sum);
 
                 status.textContent = '⏳ Вводим дату окончания...';
-                await fillField('#bg_end_at', data.endDate);
-                await activateDateField('#bg_end_at');
+                await fillDateField('#bg_end_at', data.endDate);
 
                 status.textContent = '⏳ Выбираем тип гарантии...';
                 await setSelectValue('#bg_reason', data.guaranteeInfo.realistType);
