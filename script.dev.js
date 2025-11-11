@@ -17,8 +17,8 @@
 // @connect      www.zakupki.gov.ru
 // @connect      epz.zakupki.gov.ru
 // @connect      *
-// @updateURL    https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script1.dev.js
-// @downloadURL  https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script1.dev.js
+// @updateURL    https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script.dev.js
+// @downloadURL  https://raw.githubusercontent.com/VladNevermore/bg-autofill-script/main/script.dev.js
 // ==/UserScript==
 
 (function() {
