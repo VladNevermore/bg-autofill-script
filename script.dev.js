@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автозаполнение и проверка параметров DEV NEW
 // @namespace    http://tampermonkey.net/
-// @version      15.8
+// @version      15.9
 // @description  Автозаполнение форм и сравнение параметров
 // @match        https://crm.finleo.ru/crm/orders/*
 // @match        https://market.bg.ingobank.ru/tasks*
@@ -24,7 +24,7 @@
 (function() {
     'use strict';
 
-                    const testData = {
+    const testData = {
         inn: '532117984747',
         notice: '0365300050225000167',
         period: '31.10.2025 — 31.01.2029 / 1188 дн.',
@@ -518,7 +518,7 @@
             compareAndHighlight('Номер извещения', clientData.noticeNumber, procurementData.noticeNumber);
             compareAndHighlight('Предмет контракта', clientData.purchaseSubject, procurementData.purchaseSubject);
             compareAndHighlight('Начальная цена', clientData.maxPrice, procurementData.maxPrice);
-            compareAndHighlightGuaranteePeriod(clientData.guaranteePeriod, procurementData, requirementType);
+            compareAndHighlightGuaranteePeriod(clientData.guaranteePeriod, procurementData, requirementType, clientData);
 
             if (requirementType === 'participation') {
                 compareAndHighlightGuaranteeAmount('Сумма БГ', clientData.guaranteeAmount, procurementData.bidSecurityAmount, clientData, procurementData, requirementType);
@@ -603,7 +603,7 @@
         }
     }
 
-    function compareAndHighlightGuaranteePeriod(clientValue, procurementData, requirementType) {
+    function compareAndHighlightGuaranteePeriod(clientValue, procurementData, requirementType, clientData) {
         log(`Сравнение срока БГ: CRM="${clientValue}", Закупки="${JSON.stringify(procurementData)}"`);
 
         const fieldNames = ['Срок БГ', 'Срок'];
@@ -629,21 +629,28 @@
                 return;
             }
 
-            let procurementDate = null;
             let minRequiredDate = null;
             let tooltipText = '';
 
-            if (requirementType === 'participation' && procurementData.applicationEndDate !== 'Нет данных') {
-                procurementDate = parseDate(procurementData.applicationEndDate);
-                if (procurementDate) {
-                    minRequiredDate = addMonths(procurementDate, 1);
-                    tooltipText = `Минимальный срок: ${minRequiredDate.toLocaleDateString('ru-RU')} (окончание подачи заявок ${procurementData.applicationEndDate} + 1 месяц)`;
+            if (requirementType === 'participation') {
+                const applicationEndDate = findFieldByLabel('Дата и время окончания подачи заявки');
+                if (applicationEndDate) {
+                    const appDateMatch = applicationEndDate.match(/(\d{2}\.\d{2}\.\d{4})/);
+                    if (appDateMatch) {
+                        const appDate = parseDate(appDateMatch[0]);
+                        if (appDate) {
+                            minRequiredDate = addMonths(appDate, 1);
+                            tooltipText = `Минимальный срок: ${minRequiredDate.toLocaleDateString('ru-RU')} (окончание подачи заявок ${appDateMatch[0]} + 1 месяц)`;
+                        }
+                    }
                 }
-            } else if ((requirementType === 'execution' || requirementType === 'warranty') && procurementData.contractEndDate !== 'Нет данных') {
-                procurementDate = parseDate(procurementData.contractEndDate);
-                if (procurementDate) {
-                    minRequiredDate = addMonths(procurementDate, 1);
-                    tooltipText = `Минимальный срок: ${minRequiredDate.toLocaleDateString('ru-RU')} (окончание контракта ${procurementData.contractEndDate} + 1 месяц)`;
+            } else if (requirementType === 'execution' || requirementType === 'warranty') {
+                if (procurementData.contractEndDate !== 'Нет данных') {
+                    const contrEndDate = parseDate(procurementData.contractEndDate);
+                    if (contrEndDate) {
+                        minRequiredDate = addMonths(contrEndDate, 1);
+                        tooltipText = `Минимальный срок: ${minRequiredDate.toLocaleDateString('ru-RU')} (окончание контракта ${procurementData.contractEndDate} + 1 месяц)`;
+                    }
                 }
             }
 
