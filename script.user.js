@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Автозаполнение и проверка параметров
 // @namespace    http://tampermonkey.net/
-// @version      16.5
+// @version      16.6
 // @description  Автозаполнение форм и сравнение параметров
 // @match        https://crm.finleo.ru/crm/orders/*
 // @match        https://bg.realistbank.ru/new_ticket*
@@ -1454,8 +1454,8 @@
 
     rows.forEach(row => {
         const kubanCell = Array.from(row.querySelectorAll('td')).find(td => {
-            const divWithBankName = td.querySelector('div[aria-label*="КУБАНЬ"]');
-            return divWithBankName && divWithBankName.textContent.includes('КУБАНЬ');
+            const divWithBankName = td.querySelector('div[aria-label*="Кубань Кредит (ООО КБ)"]');
+            return divWithBankName && divWithBankName.textContent.includes('Кубань Кредит (ООО КБ)');
         });
 
         if (kubanCell) {
