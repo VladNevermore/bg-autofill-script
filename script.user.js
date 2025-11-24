@@ -1,13 +1,15 @@
 // ==UserScript==
 // @name         Автозаполнение и проверка параметров
 // @namespace    http://tampermonkey.net/
-// @version      16.0
+// @version      16.5
 // @description  Автозаполнение форм и сравнение параметров
 // @match        https://crm.finleo.ru/crm/orders/*
 // @match        https://bg.realistbank.ru/new_ticket*
 // @match        https://bg.alfabank.ru/aft-ui/order*
+// @match        https://assist24.kubankredit.ru/create*
 // @match        https://lk.gosoblako.com/applications/new*
 // @match        https://b2g.tbank.ru/bgbroker/main/create-order*
+// @match        https://bg1.moscombank.ru/create*
 // @author       VladNevermore
 // @icon         https://i.pinimg.com/736x/78/53/ad/7853ade6dd49b8caba4d1037e7341323.jpg
 // @grant        GM_setValue
@@ -50,14 +52,14 @@
         .tm-like-btn { background: #FF9800; color: white; bottom: 260px; right: 20px; }
         .tm-realist-btn { background: #607D8B; color: white; bottom: 320px; right: 20px; }
         .tm-compare-btn { background: #17a2b8; color: white; bottom: 380px; right: 20px; }
-        .tm-alfa-btn { background: #EF3124; color: white; bottom: 440px; right: 20px; }
-        .tm-psb-btn { background: #2E7D32; color: white; bottom: 500px; right: 20px; }
-        .tm-tbank-btn { background: #FF6B35; color: white; bottom: 560px; right: 20px; }
-        .tm-gpb-btn { background: #1E88E5; color: white; bottom: 620px; right: 20px; }
+        .tm-alfa-btn { background: #EF3124; color: white; bottom: 500px; right: 20px; }
+        .tm-psb-btn { background: #2E7D32; color: white; bottom: 560px; right: 20px; }
+        .tm-tbank-btn { background: #FF6B35; color: white; bottom: 620px; right: 20px; }
+        .tm-gpb-btn { background: #1E88E5; color: white; bottom: 680px; right: 20px; }
         .tm-status {
             position: fixed;
             z-index: 9998;
-            bottom: 680px;
+            bottom: 740px;
             right: 20px;
             background: #333;
             color: white;
@@ -222,7 +224,57 @@
             background: #D32F2F !important;
             transform: translateY(-1px) !important;
         }
-    `);
+        .kuban-create-btn {
+        background: #FF6F00 !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 4px !important;
+        padding: 6px 12px !important;
+        font-size: 12px !important;
+        cursor: pointer !important;
+        margin-left: 8px !important;
+        font-weight: bold !important;
+        display: inline-block !important;
+    }
+    .kuban-create-btn:hover {
+        background: #E65100 !important;
+        transform: translateY(-1px) !important;
+    }
+    .tm-kuban-btn {
+        background: #FF6F00 !important;
+        color: white !important;
+        bottom: 740px !important;
+        right: 20px !important;
+    }
+        .tm-kuban-btn {
+            background: #FF6F00 !important;
+            color: white !important;
+            bottom: 740px !important;
+            right: 20px !important;
+       }
+        .moscom-create-btn {
+        background: #1A237E !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 4px !important;
+        padding: 6px 12px !important;
+        font-size: 12px !important;
+        cursor: pointer !important;
+        margin-left: 8px !important;
+        font-weight: bold !important;
+        display: inline-block !important;
+    }
+    .moscom-create-btn:hover {
+        background: #0D1B6B !important;
+        transform: translateY(-1px) !important;
+    }
+    .tm-moscom-btn {
+        background: #1A237E !important;
+        color: white !important;
+        bottom: 800px !important;
+        right: 20px !important;
+    }
+`);
 
     const log = (message, data = null) => {
         console.log(`[BG Script] ${message}`, data || '');
@@ -1261,7 +1313,6 @@
                     return button && button.textContent && (
                         button.textContent.includes('Новая') ||
                         button.textContent.includes('Рассмотрение') ||
-                        button.textContent.includes('Предложение') ||
                         button.textContent.includes('Запрос-ссылка') ||
                         button.textContent.includes('Запрос')
                     );
@@ -1394,6 +1445,225 @@
 
         return buttonsAdded > 0;
     };
+
+    const addKubanCreateButtons = () => {
+    log('Поиск строк с банком Кубань для добавления кнопок "Завести"');
+
+    const rows = document.querySelectorAll('tr.V5pxh');
+    let buttonsAdded = 0;
+
+    rows.forEach(row => {
+        const kubanCell = Array.from(row.querySelectorAll('td')).find(td => {
+            const divWithBankName = td.querySelector('div[aria-label*="КУБАНЬ"]');
+            return divWithBankName && divWithBankName.textContent.includes('КУБАНЬ');
+        });
+
+        if (kubanCell) {
+            log('Найдена строка с банком Кубань');
+
+            const actionCells = Array.from(row.querySelectorAll('td')).filter(td => {
+                const button = td.querySelector('button');
+                return button && button.textContent && (
+                    button.textContent.includes('Новая') ||
+                    button.textContent.includes('Рассмотрение') ||
+                    button.textContent.includes('Запрос-ссылка') ||
+                    button.textContent.includes('Запрос')
+                );
+            });
+
+            if (actionCells.length > 0) {
+                const actionCell = actionCells[0];
+                log('Найдена ячейка с кнопкой действия', actionCell);
+
+                if (!actionCell.querySelector('.kuban-create-btn')) {
+                    const createButton = document.createElement('button');
+                    createButton.className = 'kuban-create-btn';
+                    createButton.textContent = 'Завести';
+                    createButton.title = 'Создать заявку в Кубань';
+
+                    createButton.addEventListener('click', async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+
+                        log('Нажата кнопка "Завести" для банка Кубань');
+
+                        const data = GM_getValue('bankRequestData', null);
+                        if (!data || !data.inn) {
+                            showStatus('❌ Нет сохраненных данных для автозаполнения', 5000);
+                            log('Ошибка: Нет сохраненных данных');
+                            return;
+                        }
+
+                        showStatus('⏳ Открываем форму банка Кубань...', 3000);
+
+                        GM_setValue('autoFillKuban', true);
+
+                        setTimeout(() => {
+                            window.open('https://assist24.kubankredit.ru/create', '_blank'); // Замените на реальный URL
+                        }, 1000);
+                    });
+
+                    const buttonContainer = actionCell.querySelector('.sc-cOpnSz.eCLuvx.MuiBox-root') || actionCell;
+                    buttonContainer.appendChild(createButton);
+                    buttonsAdded++;
+                    log('Кнопка "Завести" добавлена для банка Кубань');
+                }
+            } else {
+                log('Не найдена ячейка с кнопкой действия');
+            }
+        }
+    });
+
+    if (buttonsAdded > 0) {
+        log(`Добавлено кнопок "Завести" для банка Кубань: ${buttonsAdded}`);
+    } else {
+        log('Не добавлено ни одной кнопки "Завести" для банка Кубань');
+    }
+
+    return buttonsAdded > 0;
+};
+    const addMoscomCreateButtons = () => {
+    log('Поиск строк с банком Моском для добавления кнопок "Завести"');
+
+    const rows = document.querySelectorAll('tr.V5pxh');
+    let buttonsAdded = 0;
+
+    rows.forEach(row => {
+        const moscomCell = Array.from(row.querySelectorAll('td')).find(td => {
+            const divWithBankName = td.querySelector('div[aria-label*="МОСКОМ"]');
+            return divWithBankName && divWithBankName.textContent.includes('МОСКОМ');
+        });
+
+        if (moscomCell) {
+            log('Найдена строка с банком Моском');
+
+            const actionCells = Array.from(row.querySelectorAll('td')).filter(td => {
+                const button = td.querySelector('button');
+                return button && button.textContent && (
+                    button.textContent.includes('Новая') ||
+                    button.textContent.includes('Рассмотрение') ||
+                    button.textContent.includes('Запрос-ссылка') ||
+                    button.textContent.includes('Запрос')
+                );
+            });
+
+            if (actionCells.length > 0) {
+                const actionCell = actionCells[0];
+                log('Найдена ячейка с кнопкой действия', actionCell);
+
+                if (!actionCell.querySelector('.moscom-create-btn')) {
+                    const createButton = document.createElement('button');
+                    createButton.className = 'moscom-create-btn';
+                    createButton.textContent = 'Завести';
+                    createButton.title = 'Создать заявку в Моском';
+
+                    createButton.addEventListener('click', async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+
+                        log('Нажата кнопка "Завести" для банка Моском');
+
+                        const data = GM_getValue('bankRequestData', null);
+                        if (!data || !data.inn) {
+                            showStatus('❌ Нет сохраненных данных для автозаполнения', 5000);
+                            log('Ошибка: Нет сохраненных данных');
+                            return;
+                        }
+
+                        showStatus('⏳ Открываем форму банка Моском...', 3000);
+
+                        GM_setValue('autoFillMoscom', true);
+
+                        setTimeout(() => {
+                            window.open('https://bg1.moscombank.ru/create', '_blank');
+                        }, 1000);
+                    });
+
+                    const buttonContainer = actionCell.querySelector('.sc-cOpnSz.eCLuvx.MuiBox-root') || actionCell;
+                    buttonContainer.appendChild(createButton);
+                    buttonsAdded++;
+                    log('Кнопка "Завести" добавлена для банка Моском');
+                }
+            } else {
+                log('Не найдена ячейка с кнопкой действия');
+            }
+        }
+    });
+
+    if (buttonsAdded > 0) {
+        log(`Добавлено кнопок "Завести" для банка Моском: ${buttonsAdded}`);
+    } else {
+        log('Не добавлено ни одной кнопки "Завести" для банка Моском');
+    }
+
+    return buttonsAdded > 0;
+};
+
+const initMoscomAutoCreate = () => {
+    log('Инициализация автозаполнения для банка Моском');
+
+    let attempts = 0;
+    const maxAttempts = 20;
+
+    const tryAddButtons = () => {
+        attempts++;
+        const success = addMoscomCreateButtons();
+
+        if (success) {
+            log(`✅ Успешно добавлены кнопки "Завести" для банка Моском (попытка ${attempts})`);
+        } else if (attempts >= maxAttempts) {
+            log(`❌ Не удалось добавить кнопки для банка Моском после ${attempts} попыток`);
+            return;
+        } else {
+            setTimeout(tryAddButtons, 1000);
+        }
+    };
+
+    setTimeout(tryAddButtons, 2000);
+
+    const observer = new MutationObserver(() => {
+        addMoscomCreateButtons();
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+};
+
+
+
+const initKubanAutoCreate = () => {
+    log('Инициализация автозаполнения для банка Кубань');
+
+    let attempts = 0;
+    const maxAttempts = 20;
+
+    const tryAddButtons = () => {
+        attempts++;
+        const success = addKubanCreateButtons();
+
+        if (success) {
+            log(`✅ Успешно добавлены кнопки "Завести" для банка Кубань (попытка ${attempts})`);
+        } else if (attempts >= maxAttempts) {
+            log(`❌ Не удалось добавить кнопки для банка Кубань после ${attempts} попыток`);
+            return;
+        } else {
+            setTimeout(tryAddButtons, 1000);
+        }
+    };
+
+    setTimeout(tryAddButtons, 2000);
+
+    const observer = new MutationObserver(() => {
+        addKubanCreateButtons();
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+};
 
     const initRealistAutoCreate = () => {
         log('Инициализация автозаполнения для Реалист Банка');
@@ -1609,6 +1879,8 @@
         initGPBAutoCreate();
         initTbankAutoCreate();
         initAlfaAutoCreate();
+        initKubanAutoCreate();
+        initMoscomAutoCreate();
 
         const saveParamsBtn = document.createElement('button');
         saveParamsBtn.className = 'tm-control-btn tm-save-btn';
@@ -1804,250 +2076,276 @@
     }
 
     if (window.location.href.includes('bg.alfabank.ru/aft-ui/order')) {
-        log('Инициализация на сайте Альфа-Банка');
-        createToggleSwitch();
+    log('Инициализация на сайте Альфа-Банка');
+    createToggleSwitch();
 
-        const checkAndFillAlfa = () => {
-            const shouldAutoFill = GM_getValue('autoFillAlfa', false);
-            const tabOpened = GM_getValue('alfaTabOpened', false);
+    const checkAndFillAlfa = () => {
+        const shouldAutoFill = GM_getValue('autoFillAlfa', false);
+        const tabOpened = GM_getValue('alfaTabOpened', false);
 
-            if (shouldAutoFill && tabOpened) {
-                log('Запуск автозаполнения Альфа-Банка');
-                GM_setValue('autoFillAlfa', false);
-                GM_setValue('alfaTabOpened', false);
+        if (shouldAutoFill && tabOpened) {
+            log('Запуск автозаполнения Альфа-Банка');
+            GM_setValue('autoFillAlfa', false);
+            GM_setValue('alfaTabOpened', false);
 
-                let attempts = 0;
-                const maxAttempts = 5;
+            let attempts = 0;
+            const maxAttempts = 5;
 
-                const tryFill = () => {
-                    attempts++;
-                    log(`Попытка автозаполнения Альфа-Банка ${attempts}/${maxAttempts}`);
+            const tryFill = () => {
+                attempts++;
+                log(`Попытка автозаполнения Альфа-Банка ${attempts}/${maxAttempts}`);
 
-                    if (document.querySelector('[data-test-id="principal-field"]')) {
-                        log('Форма готова, начинаем заполнение');
-                        fillAlfaBankForm();
-                    } else if (attempts < maxAttempts) {
-                        setTimeout(tryFill, 3000);
-                    } else {
-                        log('Не удалось найти форму после всех попыток');
-                        showStatus('❌ Не удалось найти форму Альфа-Банка', 5000);
-                    }
-                };
+                if (document.querySelector('[data-test-id="principal-field"]')) {
+                    log('Форма готова, начинаем заполнение');
+                    fillAlfaBankForm();
+                } else if (attempts < maxAttempts) {
+                    setTimeout(tryFill, 3000);
+                } else {
+                    log('Не удалось найти форму после всех попыток');
+                    showStatus('❌ Не удалось найти форму Альфа-Банка', 5000);
+                }
+            };
 
-                setTimeout(tryFill, 2000);
-            }
-        };
-
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', checkAndFillAlfa);
-        } else {
-            setTimeout(checkAndFillAlfa, 1000);
+            setTimeout(tryFill, 2000);
         }
+    };
 
-        const fillInnField = async (inn) => {
-            log(`Заполнение поля ИНН: ${inn}`);
-            const principalField = await waitForElement('[data-test-id="principal-field"]', 10000);
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', checkAndFillAlfa);
+    } else {
+        setTimeout(checkAndFillAlfa, 1000);
+    }
 
-            principalField.focus();
-            principalField.click();
-            await new Promise(r => setTimeout(r, 1000));
+    const fillInnField = async (inn) => {
+        log(`Заполнение поля ИНН: ${inn}`);
+        const principalField = await waitForElement('[data-test-id="principal-field"]', 10000);
 
-            principalField.select();
-            await new Promise(r => setTimeout(r, 500));
+        principalField.focus();
+        principalField.click();
+        await new Promise(r => setTimeout(r, 1000));
 
-            principalField.value = '';
-            principalField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-            principalField.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+        principalField.select();
+        await new Promise(r => setTimeout(r, 500));
 
-            await new Promise(r => setTimeout(r, 500));
+        principalField.value = '';
+        principalField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+        principalField.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
 
-            for (let i = 0; i < inn.length; i++) {
-                principalField.value = inn.substring(0, i + 1);
+        await new Promise(r => setTimeout(r, 500));
 
-                const inputEvent = new InputEvent('input', {
-                    bubbles: true,
-                    cancelable: true,
-                    inputType: 'insertText',
-                    data: inn[i]
-                });
+        for (let i = 0; i < inn.length; i++) {
+            principalField.value = inn.substring(0, i + 1);
 
-                const keydownEvent = new KeyboardEvent('keydown', {
-                    bubbles: true,
-                    cancelable: true,
-                    key: inn[i],
-                    code: `Digit${inn[i]}`,
-                    keyCode: inn[i].charCodeAt(0)
-                });
-
-                const keyupEvent = new KeyboardEvent('keyup', {
-                    bubbles: true,
-                    cancelable: true,
-                    key: inn[i],
-                    code: `Digit${inn[i]}`,
-                    keyCode: inn[i].charCodeAt(0)
-                });
-
-                principalField.dispatchEvent(keydownEvent);
-                principalField.dispatchEvent(inputEvent);
-                principalField.dispatchEvent(keyupEvent);
-                await new Promise(r => setTimeout(r, 150));
-            }
-
-            principalField.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
-            principalField.dispatchEvent(new Event('blur', { bubbles: true, cancelable: true }));
-
-            await new Promise(r => setTimeout(r, 3000));
-
-            principalField.focus();
-            principalField.click();
-
-            const arrowDownEvent = new KeyboardEvent('keydown', {
+            const inputEvent = new InputEvent('input', {
                 bubbles: true,
                 cancelable: true,
-                key: 'ArrowDown',
-                code: 'ArrowDown',
-                keyCode: 40
+                inputType: 'insertText',
+                data: inn[i]
             });
-            principalField.dispatchEvent(arrowDownEvent);
 
-            await new Promise(r => setTimeout(r, 3000));
+            const keydownEvent = new KeyboardEvent('keydown', {
+                bubbles: true,
+                cancelable: true,
+                key: inn[i],
+                code: `Digit${inn[i]}`,
+                keyCode: inn[i].charCodeAt(0)
+            });
 
-            log(`ИНН установлен: ${principalField.value}`);
-            return true;
-        };
+            const keyupEvent = new KeyboardEvent('keyup', {
+                bubbles: true,
+                cancelable: true,
+                key: inn[i],
+                code: `Digit${inn[i]}`,
+                keyCode: inn[i].charCodeAt(0)
+            });
 
-        const selectFirstCompany = async () => {
-            log(`Поиск и выбор первой компании`);
-            await new Promise(r => setTimeout(r, 5000));
+            principalField.dispatchEvent(keydownEvent);
+            principalField.dispatchEvent(inputEvent);
+            principalField.dispatchEvent(keyupEvent);
+            await new Promise(r => setTimeout(r, 150));
+        }
 
-            const optionSelectors = [
-                '[id*="downshift-"][id*="-item-0"]',
-                '[role="option"]:first-child',
-                '.select-option-with-addons_option__G6b92:first-child',
-                '.select__option_1k4c0:first-child',
-                '[data-test-id*="option"]:first-child',
-                'div[role="listbox"] [role="option"]:first-child',
-                '.Select__option:first-child'
-            ];
+        principalField.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+        principalField.dispatchEvent(new Event('blur', { bubbles: true, cancelable: true }));
 
-            for (const selector of optionSelectors) {
-                try {
-                    const option = document.querySelector(selector);
-                    if (option) {
-                        log(`Найдена опция: ${selector}`);
-                        option.click();
-                        await new Promise(r => setTimeout(r, 3000));
-                        return true;
-                    }
-                } catch (e) {
-                    continue;
-                }
-            }
+        await new Promise(r => setTimeout(r, 3000));
 
-            const allOptions = document.querySelectorAll('[role="option"], .select__option_1k4c0, [data-test-id*="option"], .Select__option');
-            if (allOptions.length > 0) {
-                log(`Найдено опций: ${allOptions.length}, выбираем первую`);
-                allOptions[0].click();
-                await new Promise(r => setTimeout(r, 3000));
-                return true;
-            }
+        principalField.focus();
+        principalField.click();
 
-            const dropdowns = document.querySelectorAll('[role="listbox"], .Select__menu');
-            if (dropdowns.length > 0) {
-                log('Найден выпадающий список, пробуем кликнуть в область списка');
-                dropdowns[0].click();
-                await new Promise(r => setTimeout(r, 2000));
+        const arrowDownEvent = new KeyboardEvent('keydown', {
+            bubbles: true,
+            cancelable: true,
+            key: 'ArrowDown',
+            code: 'ArrowDown',
+            keyCode: 40
+        });
+        principalField.dispatchEvent(arrowDownEvent);
 
-                const optionsAfterClick = document.querySelectorAll('[role="option"]');
-                if (optionsAfterClick.length > 0) {
-                    optionsAfterClick[0].click();
+        await new Promise(r => setTimeout(r, 3000));
+
+        log(`ИНН установлен: ${principalField.value}`);
+        return true;
+    };
+
+    const selectFirstCompany = async () => {
+        log(`Поиск и выбор первой компании`);
+        await new Promise(r => setTimeout(r, 5000));
+
+        const optionSelectors = [
+            '[id*="downshift-"][id*="-item-0"]',
+            '[role="option"]:first-child',
+            '.select-option-with-addons_option__G6b92:first-child',
+            '.select__option_1k4c0:first-child',
+            '[data-test-id*="option"]:first-child',
+            'div[role="listbox"] [role="option"]:first-child',
+            '.Select__option:first-child'
+        ];
+
+        for (const selector of optionSelectors) {
+            try {
+                const option = document.querySelector(selector);
+                if (option) {
+                    log(`Найдена опция: ${selector}`);
+                    option.click();
                     await new Promise(r => setTimeout(r, 3000));
                     return true;
                 }
+            } catch (e) {
+                continue;
             }
+        }
 
-            throw new Error('Не удалось найти опции для выбора компании');
-        };
-
-        const selectGuaranteeType = async (guaranteeType) => {
-            log(`Выбор типа гарантии: ${guaranteeType}`);
-
-            const guaranteeField = await waitForElement('[data-test-id="bankGuaranteeType-field"]', 5000);
-            guaranteeField.click();
+        const allOptions = document.querySelectorAll('[role="option"], .select__option_1k4c0, [data-test-id*="option"], .Select__option');
+        if (allOptions.length > 0) {
+            log(`Найдено опций: ${allOptions.length}, выбираем первую`);
+            allOptions[0].click();
             await new Promise(r => setTimeout(r, 3000));
+            return true;
+        }
 
+        const dropdowns = document.querySelectorAll('[role="listbox"], .Select__menu');
+        if (dropdowns.length > 0) {
+            log('Найден выпадающий список, пробуем кликнуть в область списка');
+            dropdowns[0].click();
             await new Promise(r => setTimeout(r, 2000));
 
-            const optionSelectors = [
-                `[data-test-id="bankGuaranteeType-option"]:nth-child(${parseInt(guaranteeType) + 1})`,
-                `.select__option_1k4c0:nth-child(${parseInt(guaranteeType) + 1})`,
-                `[role="option"]:nth-child(${parseInt(guaranteeType) + 1})`
-            ];
-
-            for (const selector of optionSelectors) {
-                try {
-                    const option = document.querySelector(selector);
-                    if (option) {
-                        option.click();
-                        await new Promise(r => setTimeout(r, 3000));
-                        return true;
-                    }
-                } catch (e) {
-                    continue;
-                }
+            const optionsAfterClick = document.querySelectorAll('[role="option"]');
+            if (optionsAfterClick.length > 0) {
+                optionsAfterClick[0].click();
+                await new Promise(r => setTimeout(r, 3000));
+                return true;
             }
+        }
 
-            throw new Error(`Не удалось найти опцию типа гарантии с индексом ${guaranteeType}`);
-        };
+        throw new Error('Не удалось найти опции для выбора компании');
+    };
 
-        const fillTradeNumber = async (notice) => {
-            log(`Заполнение номера извещения: ${notice}`);
-            const tradeField = await waitForElement('[data-test-id="tradeNumber"]', 5000);
+    const selectGuaranteeType = async (guaranteeType) => {
+        log(`Выбор типа гарантии: ${guaranteeType}`);
 
-            tradeField.focus();
-            tradeField.click();
-            await new Promise(r => setTimeout(r, 1000));
+        const guaranteeField = await waitForElement('[data-test-id="bankGuaranteeType-field"]', 5000);
+        guaranteeField.click();
+        await new Promise(r => setTimeout(r, 3000));
 
-            tradeField.value = '';
-            tradeField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+        await new Promise(r => setTimeout(r, 2000));
 
-            for (let i = 0; i < notice.length; i++) {
-                tradeField.value = notice.substring(0, i + 1);
-                tradeField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-                await new Promise(r => setTimeout(r, 100));
-            }
+        const optionSelectors = [
+            `[data-test-id="bankGuaranteeType-option"]:nth-child(${parseInt(guaranteeType) + 1})`,
+            `.select__option_1k4c0:nth-child(${parseInt(guaranteeType) + 1})`,
+            `[role="option"]:nth-child(${parseInt(guaranteeType) + 1})`
+        ];
 
-            tradeField.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
-            tradeField.dispatchEvent(new Event('blur', { bubbles: true, cancelable: true }));
-            await new Promise(r => setTimeout(r, 3000));
-
-            log(`Номер извещения установлен: ${tradeField.value}`);
-        };
-
-        const handleRequirementSelection = async (data) => {
-            log('Обработка выбора потребности');
-            await new Promise(r => setTimeout(r, 5000));
-
-            const requirementField = document.querySelector('[data-test-id="requirement-field"]');
-            if (!requirementField) {
-                log('Поле потребности не найдено, пропускаем');
-                return;
-            }
-
-            requirementField.click();
-            await new Promise(r => setTimeout(r, 3000));
-
-            let targetText = 'Обеспечение исполнения';
-            if (data.guaranteeInfo.alfaType === '0') targetText = 'Обеспечение заявки';
-            else if (data.guaranteeInfo.alfaType === '4') targetText = 'Гарантийные обязательства';
-
-            const options = document.querySelectorAll('[data-test-id="requirement-option"], [role="option"], .select__option_1k4c0');
-
-            for (const option of options) {
-                if (option.textContent && option.textContent.includes(targetText)) {
+        for (const selector of optionSelectors) {
+            try {
+                const option = document.querySelector(selector);
+                if (option) {
                     option.click();
                     await new Promise(r => setTimeout(r, 3000));
-                    log(`Потребность выбрана: ${targetText}`);
+                    return true;
+                }
+            } catch (e) {
+                continue;
+            }
+        }
+
+        throw new Error(`Не удалось найти опцию типа гарантии с индексом ${guaranteeType}`);
+    };
+
+    const fillTradeNumber = async (notice) => {
+        log(`Заполнение номера извещения: ${notice}`);
+        const tradeField = await waitForElement('[data-test-id="tradeNumber"]', 5000);
+
+        tradeField.focus();
+        tradeField.click();
+        await new Promise(r => setTimeout(r, 1000));
+
+        tradeField.value = '';
+        tradeField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+
+        for (let i = 0; i < notice.length; i++) {
+            tradeField.value = notice.substring(0, i + 1);
+            tradeField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+            await new Promise(r => setTimeout(r, 100));
+        }
+
+        tradeField.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+        tradeField.dispatchEvent(new Event('blur', { bubbles: true, cancelable: true }));
+        await new Promise(r => setTimeout(r, 3000));
+
+        log(`Номер извещения установлен: ${tradeField.value}`);
+    };
+
+    const handleRequirementSelection = async (data) => {
+        log('Обработка выбора потребности');
+        await new Promise(r => setTimeout(r, 5000));
+
+        const requirementField = document.querySelector('[data-test-id="requirement-field"]');
+        if (!requirementField) {
+            log('Поле потребности не найдено, пропускаем');
+            return;
+        }
+
+        requirementField.click();
+        await new Promise(r => setTimeout(r, 3000));
+
+        let targetText = 'Обеспечение исполнения';
+        if (data.guaranteeInfo.alfaType === '0') targetText = 'Обеспечение заявки';
+        else if (data.guaranteeInfo.alfaType === '4') targetText = 'Гарантийные обязательства';
+
+        const options = document.querySelectorAll('[data-test-id="requirement-option"], [role="option"], .select__option_1k4c0');
+
+        for (const option of options) {
+            if (option.textContent && option.textContent.includes(targetText)) {
+                option.click();
+                await new Promise(r => setTimeout(r, 3000));
+                log(`Потребность выбрана: ${targetText}`);
+                return;
+            }
+        }
+
+        if (options.length > 0) {
+            options[0].click();
+            await new Promise(r => setTimeout(r, 3000));
+            log('Выбрана первая доступная потребность');
+        }
+    };
+
+    const selectPublicationRegistry = async () => {
+        log('Выбор реестра публикаций');
+
+        try {
+            const registryField = await waitForElement('[data-test-id="publicationRegistry-field"]', 5000);
+            registryField.click();
+            await new Promise(r => setTimeout(r, 3000));
+
+            const options = document.querySelectorAll('[data-test-id="publicationRegistry-option"], [role="option"]');
+
+            for (const option of options) {
+                if (option.textContent && option.textContent.includes('Реестр ЕИС')) {
+                    option.click();
+                    await new Promise(r => setTimeout(r, 3000));
+                    log('Выбран реестр ЕИС');
                     return;
                 }
             }
@@ -2055,245 +2353,219 @@
             if (options.length > 0) {
                 options[0].click();
                 await new Promise(r => setTimeout(r, 3000));
-                log('Выбрана первая доступная потребность');
+                log('Выбран первый доступный реестр');
             }
-        };
+        } catch (error) {
+            log('Не удалось выбрать реестр публикаций: ' + error.message);
+        }
+    };
 
-        const selectPublicationRegistry = async () => {
-            log('Выбор реестра публикаций');
+    const fillFinalAmount = async (price) => {
+        log(`Заполнение предложенной цены: ${price}`);
+        const finalAmountField = await waitForElement('[data-test-id="finalAmount"]', 5000);
 
-            try {
-                const registryField = await waitForElement('[data-test-id="publicationRegistry-field"]', 5000);
-                registryField.click();
-                await new Promise(r => setTimeout(r, 3000));
+        finalAmountField.focus();
+        finalAmountField.click();
+        await new Promise(r => setTimeout(r, 1000));
 
-                const options = document.querySelectorAll('[data-test-id="publicationRegistry-option"], [role="option"]');
+        finalAmountField.value = '';
+        finalAmountField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
 
-                for (const option of options) {
-                    if (option.textContent && option.textContent.includes('Реестр ЕИС')) {
-                        option.click();
-                        await new Promise(r => setTimeout(r, 3000));
-                        log('Выбран реестр ЕИС');
-                        return;
-                    }
-                }
-
-                if (options.length > 0) {
-                    options[0].click();
-                    await new Promise(r => setTimeout(r, 3000));
-                    log('Выбран первый доступный реестр');
-                }
-            } catch (error) {
-                log('Не удалось выбрать реестр публикаций: ' + error.message);
-            }
-        };
-
-        const fillFinalAmount = async (price) => {
-            log(`Заполнение предложенной цены: ${price}`);
-            const finalAmountField = await waitForElement('[data-test-id="finalAmount"]', 5000);
-
-            finalAmountField.focus();
-            finalAmountField.click();
-            await new Promise(r => setTimeout(r, 1000));
-
-            finalAmountField.value = '';
+        for (let i = 0; i < price.length; i++) {
+            finalAmountField.value = price.substring(0, i + 1);
             finalAmountField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+            await new Promise(r => setTimeout(r, 100));
+        }
 
-            for (let i = 0; i < price.length; i++) {
-                finalAmountField.value = price.substring(0, i + 1);
-                finalAmountField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-                await new Promise(r => setTimeout(r, 100));
-            }
+        finalAmountField.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+        finalAmountField.dispatchEvent(new Event('blur', { bubbles: true, cancelable: true }));
+        await new Promise(r => setTimeout(r, 2000));
 
-            finalAmountField.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
-            finalAmountField.dispatchEvent(new Event('blur', { bubbles: true, cancelable: true }));
-            await new Promise(r => setTimeout(r, 2000));
+        log(`Предложенная цена установлена: ${finalAmountField.value}`);
+    };
 
-            log(`Предложенная цена установлена: ${finalAmountField.value}`);
-        };
+    const handleAdvance = async (advanceAmount) => {
+        if (!advanceAmount || advanceAmount === '' || advanceAmount === '0') {
+            log('Аванс не указан, пропускаем');
+            return;
+        }
 
-        const handleAdvance = async (advanceAmount) => {
-            if (!advanceAmount || advanceAmount === '' || advanceAmount === '0') {
-                log('Аванс не указан, пропускаем');
-                return;
-            }
+        log(`Обработка аванса: ${advanceAmount}`);
 
-            log(`Обработка аванса: ${advanceAmount}`);
-
-            try {
-                const prepaymentCheckbox = await waitForElement('[data-test-id="prepaymentExists"]', 3000);
-                if (!prepaymentCheckbox.checked) {
-                    prepaymentCheckbox.click();
-                    await new Promise(r => setTimeout(r, 2000));
-                }
-
-                const prepaymentAmountField = await waitForElement('[data-test-id="prepaymentAmount"]', 3000);
-
-                prepaymentAmountField.focus();
-                prepaymentAmountField.click();
-                await new Promise(r => setTimeout(r, 1000));
-
-                prepaymentAmountField.value = '';
-                prepaymentAmountField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-
-                for (let i = 0; i < advanceAmount.length; i++) {
-                    prepaymentAmountField.value = advanceAmount.substring(0, i + 1);
-                    prepaymentAmountField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-                    await new Promise(r => setTimeout(r, 100));
-                }
-
-                prepaymentAmountField.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
-                prepaymentAmountField.dispatchEvent(new Event('blur', { bubbles: true, cancelable: true }));
+        try {
+            const prepaymentCheckbox = await waitForElement('[data-test-id="prepaymentExists"]', 3000);
+            if (!prepaymentCheckbox.checked) {
+                prepaymentCheckbox.click();
                 await new Promise(r => setTimeout(r, 2000));
-
-                log(`Сумма аванса установлена: ${prepaymentAmountField.value}`);
-            } catch (error) {
-                log('Ошибка при заполнении аванса: ' + error.message);
             }
-        };
 
-        const fillEndDate = async (endDate) => {
-            log(`Заполнение даты окончания: ${endDate}`);
-            const endDateField = await waitForElement('[data-test-id="guaranteeDateRange.to"]', 5000);
+            const prepaymentAmountField = await waitForElement('[data-test-id="prepaymentAmount"]', 3000);
 
-            endDateField.focus();
-            endDateField.click();
+            prepaymentAmountField.focus();
+            prepaymentAmountField.click();
             await new Promise(r => setTimeout(r, 1000));
 
-            endDateField.value = '';
+            prepaymentAmountField.value = '';
+            prepaymentAmountField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+
+            for (let i = 0; i < advanceAmount.length; i++) {
+                prepaymentAmountField.value = advanceAmount.substring(0, i + 1);
+                prepaymentAmountField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+                await new Promise(r => setTimeout(r, 100));
+            }
+
+            prepaymentAmountField.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+            prepaymentAmountField.dispatchEvent(new Event('blur', { bubbles: true, cancelable: true }));
+            await new Promise(r => setTimeout(r, 2000));
+
+            log(`Сумма аванса установлена: ${prepaymentAmountField.value}`);
+        } catch (error) {
+            log('Ошибка при заполнении аванса: ' + error.message);
+        }
+    };
+
+    const fillEndDate = async (endDate) => {
+        log(`Заполнение даты окончания: ${endDate}`);
+        const endDateField = await waitForElement('[data-test-id="guaranteeDateRange.to"]', 5000);
+
+        endDateField.focus();
+        endDateField.click();
+        await new Promise(r => setTimeout(r, 1000));
+
+        endDateField.value = '';
+        endDateField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+
+        for (let i = 0; i < endDate.length; i++) {
+            endDateField.value = endDate.substring(0, i + 1);
             endDateField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+            await new Promise(r => setTimeout(r, 100));
+        }
 
-            for (let i = 0; i < endDate.length; i++) {
-                endDateField.value = endDate.substring(0, i + 1);
-                endDateField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-                await new Promise(r => setTimeout(r, 100));
-            }
+        endDateField.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+        endDateField.dispatchEvent(new Event('blur', { bubbles: true, cancelable: true }));
+        await new Promise(r => setTimeout(r, 2000));
 
-            endDateField.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
-            endDateField.dispatchEvent(new Event('blur', { bubbles: true, cancelable: true }));
-            await new Promise(r => setTimeout(r, 2000));
+        log(`Дата окончания установлена: ${endDateField.value}`);
+    };
 
-            log(`Дата окончания установлена: ${endDateField.value}`);
-        };
+    const clickEditBeneficiaryButton = async () => {
+        log('Нажимаем кнопку редактирования бенефициара');
 
-        const clickEditBeneficiaryButton = async () => {
-            log('Нажимаем кнопку редактирования бенефициара');
+        const editButtonSelectors = [
+            '[data-test-id="beneficiaries.[0].editButton"]',
+            '.beneficiary-item_editButton__7pHjx',
+            'button[data-test-id*="beneficiaries"]',
+            'button[class*="editButton"]'
+        ];
 
-            const editButtonSelectors = [
-                '[data-test-id="beneficiaries.[0].editButton"]',
-                '.beneficiary-item_editButton__7pHjx',
-                'button[data-test-id*="beneficiaries"]',
-                'button[class*="editButton"]'
-            ];
-
-            for (const selector of editButtonSelectors) {
-                try {
-                    const button = await waitForElement(selector, 3000);
-                    if (button) {
-                        button.click();
-                        await new Promise(r => setTimeout(r, 5000));
-                        log('Кнопка редактирования нажата');
-                        return true;
-                    }
-                } catch (e) {
-                    continue;
-                }
-            }
-
-            throw new Error('Не удалось найти кнопку редактирования бенефициара');
-        };
-
-        const fillBgAmount = async (sum) => {
-            log(`Заполнение суммы БГ: ${sum}`);
-            const bgAmountField = await waitForElement('[data-test-id="beneficiaries[0].bgAmount"]', 5000);
-
-            bgAmountField.focus();
-            await new Promise(r => setTimeout(r, 1000));
-
-            bgAmountField.select();
-            await new Promise(r => setTimeout(r, 500));
-
-            bgAmountField.value = '';
-            bgAmountField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-
-            for (let i = 0; i < sum.length; i++) {
-                bgAmountField.value = sum.substring(0, i + 1);
-                bgAmountField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-                await new Promise(r => setTimeout(r, 100));
-            }
-
-            bgAmountField.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
-            bgAmountField.dispatchEvent(new Event('blur', { bubbles: true, cancelable: true }));
-            await new Promise(r => setTimeout(r, 2000));
-
-            log(`Сумма БГ установлена: ${bgAmountField.value}`);
-        };
-
-        const fillAlfaBankForm = async () => {
-            log('Начало заполнения формы в Альфа-Банке');
-            const data = GM_getValue('bankRequestData', null);
-            if (!data || !data.inn) {
-                log('Ошибка: Нет сохраненных данных или ИНН');
-                showStatus('❌ Нет сохраненных данных', 5000);
-                return;
-            }
-
-            const status = showStatus('⏳ Начинаем заполнение в Альфа-Банке...', null);
-
+        for (const selector of editButtonSelectors) {
             try {
-                status.textContent = '⏳ Вводим ИНН...';
-                await fillInnField(data.inn);
-
-                status.textContent = '⏳ Выбираем компанию...';
-                await selectFirstCompany();
-
-                status.textContent = '⏳ Выбираем тип гарантии...';
-                const guaranteeType = data.guaranteeInfo?.alfaType || '1';
-                await selectGuaranteeType(guaranteeType);
-
-                status.textContent = '⏳ Вводим номер извещения...';
-                await fillTradeNumber(data.notice);
-
-                status.textContent = '⏳ Обрабатываем выбор потребности...';
-                await handleRequirementSelection(data);
-
-                status.textContent = '⏳ Выбираем реестр публикаций...';
-                await selectPublicationRegistry();
-
-                status.textContent = '⏳ Вводим предложенную цену...';
-                await fillFinalAmount(data.proposedPrice || data.price);
-
-                if (data.advanceAmount && data.advanceAmount !== '' && data.advanceAmount !== '0') {
-                    status.textContent = '⏳ Заполняем аванс...';
-                    await handleAdvance(data.advanceAmount);
+                const button = await waitForElement(selector, 3000);
+                if (button) {
+                    button.click();
+                    await new Promise(r => setTimeout(r, 5000));
+                    log('Кнопка редактирования нажата');
+                    return true;
                 }
-
-                status.textContent = '⏳ Вводим дату окончания...';
-                await fillEndDate(data.endDate);
-
-                status.textContent = '⏳ Редактируем бенефициара...';
-                await clickEditBeneficiaryButton();
-
-                status.textContent = '⏳ Вводим сумму БГ...';
-                await fillBgAmount(data.sum);
-
-                status.textContent = '✅ Форма Альфа-Банка полностью заполнена!';
-                log('Форма Альфа-Банка полностью заполнена');
-                setTimeout(() => status.remove(), 5000);
-
-            } catch (error) {
-                log(`Ошибка при заполнении формы Альфа-Банка: ${error.message}`, error);
-                status.textContent = `❌ Ошибка: ${error.message}`;
-                setTimeout(() => status.remove(), 7000);
+            } catch (e) {
+                continue;
             }
-        };
+        }
 
-        const alfaBtn = document.createElement('button');
-        alfaBtn.className = 'tm-control-btn tm-alfa-btn';
-        alfaBtn.textContent = 'Заполнить АльфаБанк';
-        alfaBtn.onclick = fillAlfaBankForm;
-        document.body.appendChild(alfaBtn);
-    }
+        throw new Error('Не удалось найти кнопку редактирования бенефициара');
+    };
+
+    const fillBgAmount = async (sum) => {
+        log(`Заполнение суммы БГ: ${sum}`);
+        const bgAmountField = await waitForElement('[data-test-id="beneficiaries[0].bgAmount"]', 5000);
+
+        bgAmountField.focus();
+        await new Promise(r => setTimeout(r, 1000));
+
+        bgAmountField.select();
+        await new Promise(r => setTimeout(r, 500));
+
+        bgAmountField.value = '';
+        bgAmountField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+
+        for (let i = 0; i < sum.length; i++) {
+            bgAmountField.value = sum.substring(0, i + 1);
+            bgAmountField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+            await new Promise(r => setTimeout(r, 100));
+        }
+
+        bgAmountField.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+        bgAmountField.dispatchEvent(new Event('blur', { bubbles: true, cancelable: true }));
+        await new Promise(r => setTimeout(r, 2000));
+
+        log(`Сумма БГ установлена: ${bgAmountField.value}`);
+    };
+
+    const fillAlfaBankForm = async () => {
+        log('Начало заполнения формы в Альфа-Банке');
+        const data = GM_getValue('bankRequestData', null);
+        if (!data || !data.inn) {
+            log('Ошибка: Нет сохраненных данных или ИНН');
+            showStatus('❌ Нет сохраненных данных', 5000);
+            return;
+        }
+
+        const status = showStatus('⏳ Начинаем заполнение в Альфа-Банке...', null);
+
+        try {
+            status.textContent = '⏳ Вводим ИНН...';
+            await fillInnField(data.inn);
+
+            status.textContent = '⏳ Выбираем компанию...';
+            await selectFirstCompany();
+
+            status.textContent = '⏳ Выбираем тип гарантии...';
+            const guaranteeType = data.guaranteeInfo?.alfaType || '1';
+            await selectGuaranteeType(guaranteeType);
+
+            status.textContent = '⏳ Вводим номер извещения...';
+            await fillTradeNumber(data.notice);
+
+            status.textContent = '⏳ Обрабатываем выбор потребности...';
+            await handleRequirementSelection(data);
+
+            status.textContent = '⏳ Выбираем реестр публикаций...';
+            await selectPublicationRegistry();
+
+            status.textContent = '⏳ Вводим предложенную цену...';
+            await fillFinalAmount(data.proposedPrice || data.price);
+
+            if (data.advanceAmount && data.advanceAmount !== '' && data.advanceAmount !== '0') {
+                status.textContent = '⏳ Заполняем аванс...';
+                await handleAdvance(data.advanceAmount);
+            }
+
+            status.textContent = '⏳ Вводим дату окончания...';
+            await fillEndDate(data.endDate);
+
+            status.textContent = '⏳ Редактируем бенефициара...';
+            await clickEditBeneficiaryButton();
+
+            status.textContent = '⏳ Вводим сумму БГ...';
+            await fillBgAmount(data.sum);
+
+            status.textContent = '✅ Форма Альфа-Банка полностью заполнена!';
+            log('Форма Альфа-Банка полностью заполнена');
+            setTimeout(() => status.remove(), 5000);
+
+        } catch (error) {
+            log(`Ошибка при заполнении формы Альфа-Банка: ${error.message}`, error);
+            status.textContent = `❌ Ошибка: ${error.message}`;
+            setTimeout(() => status.remove(), 7000);
+        }
+    };
+
+    const alfaBtn = document.createElement('button');
+    alfaBtn.className = 'tm-control-btn tm-alfa-btn';
+    alfaBtn.textContent = 'Заполнить АльфаБанк';
+    alfaBtn.onclick = fillAlfaBankForm;
+    document.body.appendChild(alfaBtn);
+}
 
     if (window.location.href.includes('lk.gosoblako.com/applications/new')) {
         log('Инициализация на сайте ПСБ/ГПБ');
@@ -2816,4 +3088,210 @@
             }, 2000);
         }
     }
+    if (window.location.href.includes('https://assist24.kubankredit.ru/create')) {
+    log('Инициализация на сайте банка Кубань');
+    createToggleSwitch();
+
+    const fillKubanForm = async () => {
+        log('Начало заполнения формы в банке Кубань');
+        const data = GM_getValue('bankRequestData', null);
+        if (!data || !data.inn) {
+            log('Ошибка: Нет сохраненных данных или ИНН');
+            showStatus('❌ Нет сохраненных данных', 5000);
+            return;
+        }
+
+        const status = showStatus('⏳ Начинаем заполнение в банке Кубань...', null);
+
+        try {
+            status.textContent = '⏳ Вводим ИНН клиента...';
+            const innField = await waitForElement('input[name="entity_inn"]');
+            await fillFieldByElement(innField, data.inn);
+
+            status.textContent = '⏳ Вводим номер извещения...';
+            const noticeField = await waitForElement('input[name="purchase"]');
+            await fillFieldByElement(noticeField, data.notice);
+
+            status.textContent = '⏳ Выбираем тип банковской гарантии...';
+            const bgTypeField = await waitForElement('select[name="bg_types"]');
+
+            let kubanType = '0';
+            if (data.guaranteeInfo) {
+                if (data.guaranteeInfo.alfaType === '0') {
+                    kubanType = '1';
+                } else if (data.guaranteeInfo.alfaType === '1') {
+                    if (data.advanceAmount && data.advanceAmount !== '' && data.advanceAmount !== '0') {
+                        kubanType = '2';
+                    } else {
+                        kubanType = '0';
+                    }
+                } else if (data.guaranteeInfo.alfaType === '4') {
+                    kubanType = '3';
+                }
+            }
+
+            bgTypeField.value = kubanType;
+            bgTypeField.dispatchEvent(new Event('change', { bubbles: true }));
+            await new Promise(r => setTimeout(r, 2000));
+
+            status.textContent = '⏳ Вводим предложенную цену...';
+            const priceField = await waitForElement('input[name="final_price"]');
+            await fillFieldByElement(priceField, data.proposedPrice || data.price);
+
+            status.textContent = '⏳ Вводим сумму БГ...';
+            const sumField = await waitForElement('input[name="execSum_0"]');
+            await fillFieldByElement(sumField, data.sum);
+
+            status.textContent = '⏳ Вводим дату окончания БГ...';
+            const dateField = await waitForElement('input[name="date_finish_0"]');
+            await fillFieldByElement(dateField, data.endDate);
+
+            status.textContent = '✅ Форма банка Кубань заполнена! Проверьте данные';
+            log('Форма банка Кубань успешно заполнена');
+            setTimeout(() => status.remove(), 5000);
+
+        } catch (error) {
+            log(`Ошибка при заполнении формы банка Кубань: ${error.message}`, error);
+            status.textContent = `❌ Ошибка: ${error.message}`;
+            setTimeout(() => status.remove(), 5000);
+        }
+    };
+
+    const kubanBtn = document.createElement('button');
+    kubanBtn.className = 'tm-control-btn tm-kuban-btn';
+    kubanBtn.textContent = 'Заполнить Кубань';
+    kubanBtn.onclick = fillKubanForm;
+    document.body.appendChild(kubanBtn);
+
+    const autoFillKuban = GM_getValue('autoFillKuban', false);
+    if (autoFillKuban) {
+        log('Автоматическое заполнение формы банка Кубань');
+        GM_setValue('autoFillKuban', false);
+        setTimeout(() => {
+            fillKubanForm();
+        }, 2000);
+    }
+}
+    if (window.location.href.includes('bg1.moscombank.ru/create')) {
+    log('Инициализация на сайте банка Моском');
+    createToggleSwitch();
+
+    const formatNumberForMoscom = (numberStr) => {
+        if (!numberStr) return '0,00';
+
+        let cleanNumber = numberStr.toString().replace(/\s/g, '').replace(',', '.');
+        let number = parseFloat(cleanNumber);
+
+        if (isNaN(number)) return '0,00';
+
+        return number.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    };
+
+    const fillFieldWithFormattedNumber = async (field, value) => {
+        log(`Заполнение поля форматированным числом: ${value}`);
+        field.focus();
+        field.click();
+        await new Promise(r => setTimeout(r, 500));
+
+        field.value = '';
+        field.dispatchEvent(new Event('input', {bubbles: true}));
+
+        const formattedValue = formatNumberForMoscom(value);
+
+        for (let i = 0; i < formattedValue.length; i++) {
+            field.value = formattedValue.substring(0, i + 1);
+            field.dispatchEvent(new Event('input', {bubbles: true}));
+            await new Promise(r => setTimeout(r, 50));
+        }
+
+        field.dispatchEvent(new Event('change', {bubbles: true}));
+        field.dispatchEvent(new Event('blur', {bubbles: true}));
+        await new Promise(r => setTimeout(r, 1000));
+    };
+
+    const fillMoscomForm = async () => {
+        log('Начало заполнения формы в банке Моском');
+        const data = GM_getValue('bankRequestData', null);
+        if (!data || !data.inn) {
+            log('Ошибка: Нет сохраненных данных или ИНН');
+            showStatus('❌ Нет сохраненных данных', 5000);
+            return;
+        }
+
+        const status = showStatus('⏳ Начинаем заполнение в банке Моском...', null);
+
+        try {
+            status.textContent = '⏳ Вводим ИНН клиента...';
+            const innField = await waitForElement('input[name="entity_inn"]');
+            await fillFieldByElement(innField, data.inn);
+
+            status.textContent = '⏳ Вводим номер извещения...';
+            const noticeField = await waitForElement('input[name="purchase"]');
+            await fillFieldByElement(noticeField, data.notice);
+
+            status.textContent = '⏳ Выбираем тип банковской гарантии...';
+            const bgTypeField = await waitForElement('select[name="bg_types"]');
+
+            let moscomType = '0';
+            if (data.guaranteeInfo) {
+                if (data.guaranteeInfo.alfaType === '0') {
+                    moscomType = '1';
+                } else if (data.guaranteeInfo.alfaType === '1') {
+                    moscomType = '0';
+                } else if (data.guaranteeInfo.alfaType === '4') {
+                    moscomType = '3';
+                }
+            }
+
+            bgTypeField.value = moscomType;
+            bgTypeField.dispatchEvent(new Event('change', { bubbles: true }));
+            await new Promise(r => setTimeout(r, 2000));
+
+            status.textContent = '⏳ Вводим предложенную цену...';
+            const priceField = await waitForElement('input[name="final_price"]');
+            await fillFieldWithFormattedNumber(priceField, data.proposedPrice || data.price);
+
+            status.textContent = '⏳ Вводим сумму БГ...';
+            const sumField = await waitForElement('input[name="execSum"]');
+            await fillFieldWithFormattedNumber(sumField, data.sum);
+
+            status.textContent = '⏳ Вводим дату окончания БГ...';
+            const dateField = await waitForElement('input[name="date_finish"]');
+            await fillFieldByElement(dateField, data.endDate);
+
+            if (data.advanceAmount && data.advanceAmount !== '' && data.advanceAmount !== '0') {
+                status.textContent = '⏳ Отмечаем наличие аванса...';
+                const advanceCheckbox = await waitForElement('input[id="avans"]');
+                if (!advanceCheckbox.checked) {
+                    advanceCheckbox.click();
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+            }
+
+            status.textContent = '✅ Форма банка Моском заполнена! Проверьте данные';
+            log('Форма банка Моском успешно заполнена');
+            setTimeout(() => status.remove(), 5000);
+
+        } catch (error) {
+            log(`Ошибка при заполнении формы банка Моском: ${error.message}`, error);
+            status.textContent = `❌ Ошибка: ${error.message}`;
+            setTimeout(() => status.remove(), 5000);
+        }
+    };
+
+    const moscomBtn = document.createElement('button');
+    moscomBtn.className = 'tm-control-btn tm-moscom-btn';
+    moscomBtn.textContent = 'Заполнить Моском';
+    moscomBtn.onclick = fillMoscomForm;
+    document.body.appendChild(moscomBtn);
+
+    const autoFillMoscom = GM_getValue('autoFillMoscom', false);
+    if (autoFillMoscom) {
+        log('Автоматическое заполнение формы банка Моском');
+        GM_setValue('autoFillMoscom', false);
+        setTimeout(() => {
+            fillMoscomForm();
+        }, 2000);
+    }
+}
 })();
