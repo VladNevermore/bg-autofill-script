@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Перенос трека времени
 // @namespace    http://tampermonkey.net/
-// @version      2.4
+// @version      2.5
 // @description  -
 // @author       VladNevermore
 // @match        https://docs.google.com/spreadsheets/d/1Aey5mZAQi4vbvri81WyCeSjwKwlH_eHuwbb0aTGAZwk/edit*
@@ -80,7 +80,7 @@
         }, 7000);
     }
 
-    function waitForElement(selector, timeout = 15000) {
+    function waitForElement(selector, timeout = 3000) {
         return new Promise((resolve, reject) => {
             const start = Date.now();
             const check = () => {
@@ -122,10 +122,7 @@
 
     async function processTask(entry) {
         try {
-            if (!window.location.href.includes(entry.key)) {
-                await addLog(entry, false, 'несоответствие URL');
-                return false;
-            }
+
             let timeBtn;
             try {
                 timeBtn = await waitForElement('div.TimeTracking button.Bubble-Button');
@@ -186,22 +183,30 @@
             if (!queue.length) return;
 
             const taskMatch = window.location.href.match(/https:\/\/tracker\.yandex\.ru\/([A-Z]+-\d+)/);
-            if (!taskMatch) return;
+            const currentKey = taskMatch ? taskMatch[1] : null;
+            const expectedKey = queue[0].key;
 
-            const currentKey = taskMatch[1];
-            if (queue[0].key !== currentKey) {
-                console.warn('Queue mismatch, clearing');
-                const log = await GM_getValue(LOG_KEY, []);
-                if (log.length > 0) {
-                    const numberedLog = log.map((e, i) => `${i+1}. ${e}`).join('\n');
-                    showToast('⚠️ Очередь сбита.\n' + numberedLog, 'error');
+            if (currentKey !== expectedKey) {
+                console.warn(`Task ${expectedKey} not found on current page (URL key: ${currentKey})`);
+                await addLog(queue[0], false, 'задача не найдена (возможно, удалена или нет доступа)');
+
+                queue.shift();
+
+                if (queue.length > 0) {
+                    await GM_setValue(STORAGE_KEY, queue);
+                    window.location.href = `https://tracker.yandex.ru/${queue[0].key}`;
+                } else {
+                    const log = await GM_getValue(LOG_KEY, []);
+                    const numberedLog = log.map((entry, idx) => `${idx+1}. ${entry}`).join('\n');
+                    const hasError = log.some(e => e.startsWith('❌'));
+                    showToast(numberedLog || 'Нет задач', hasError ? 'error' : 'success');
+                    await GM_setValue(STORAGE_KEY, []);
+                    await GM_setValue(LOG_KEY, []);
                 }
-                await GM_setValue(STORAGE_KEY, []);
-                await GM_setValue(LOG_KEY, []);
                 return;
             }
 
-            console.log(`Processing: ${currentKey}`);
+            console.log(`Processing: ${expectedKey}`);
             await processTask(queue[0]);
 
             queue.shift();
