@@ -77,7 +77,7 @@
         setTimeout(() => {
             toast.style.opacity = '0';
             setTimeout(() => toast.remove(), 500);
-        }, 7000);
+        }, 15000);
     }
 
     function waitForElement(selector, timeout = 3000) {
