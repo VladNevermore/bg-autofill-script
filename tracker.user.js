@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Перенос трека времени
 // @namespace    http://tampermonkey.net/
-// @version      2.2
+// @version      2.3
 // @description  -
 // @author       VladNevermore
 // @match        https://docs.google.com/spreadsheets/d/1Aey5mZAQi4vbvri81WyCeSjwKwlH_eHuwbb0aTGAZwk/edit*
@@ -68,13 +68,14 @@
             opacity: 1;
             transition: opacity 0.5s;
             white-space: pre-line;
+            max-width: 400px;
         `;
         toast.textContent = message;
         document.body.appendChild(toast);
         setTimeout(() => {
             toast.style.opacity = '0';
             setTimeout(() => toast.remove(), 500);
-        }, 5000);
+        }, 7000); // чуть больше времени на чтение
     }
 
     function waitForElement(selector, timeout = 15000) {
@@ -175,31 +176,42 @@
     async function checkAndProcessQueue() {
         const queue = await GM_getValue(STORAGE_KEY, []);
         if (!queue.length) return;
+
         const taskMatch = window.location.href.match(/https:\/\/tracker\.yandex\.ru\/([A-Z]+-\d+)/);
         if (!taskMatch) return;
+
         const currentKey = taskMatch[1];
         if (queue[0].key !== currentKey) {
             console.warn('Queue mismatch, clearing');
+            // Покажем то, что уже успело накопиться, перед сбросом
+            const log = await GM_getValue(LOG_KEY, []);
+            if (log.length > 0) {
+                const numberedLog = log.map((e, i) => `${i+1}. ${e}`).join('\n');
+                showToast('⚠️ Очередь сбита.\n' + numberedLog, 'error');
+            }
             await GM_setValue(STORAGE_KEY, []);
+            await GM_setValue(LOG_KEY, []);
             return;
         }
+
         console.log(`Processing: ${currentKey}`);
         const success = await processTask(queue[0]);
-        if (!success) {
-            const log = await GM_getValue(LOG_KEY, []);
-            await GM_setValue(STORAGE_KEY, []);
-            showToast(log.join('\n'), 'error');
-            await GM_setValue(LOG_KEY, []);
-            return;
-        }
+
+        // Удаляем обработанную задачу из очереди в любом случае
         queue.shift();
+
         if (queue.length === 0) {
+            // Все задачи обработаны — показываем итоговый лог
             const log = await GM_getValue(LOG_KEY, []);
+            const numberedLog = log.map((entry, idx) => `${idx+1}. ${entry}`).join('\n');
+            const hasError = log.some(e => e.startsWith('❌'));
+            showToast(numberedLog || 'Нет задач', hasError ? 'error' : 'success');
             await GM_setValue(STORAGE_KEY, []);
-            showToast(log.join('\n'), 'success');
             await GM_setValue(LOG_KEY, []);
             return;
         }
+
+        // Ещё есть задачи — сохраняем обновлённую очередь и переходим
         await GM_setValue(STORAGE_KEY, queue);
         window.location.href = `https://tracker.yandex.ru/${queue[0].key}`;
     }
