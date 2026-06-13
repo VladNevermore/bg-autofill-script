@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Перенос трека времени
 // @namespace    http://tampermonkey.net/
-// @version      2.3
+// @version      2.4
 // @description  -
 // @author       VladNevermore
 // @match        https://docs.google.com/spreadsheets/d/1Aey5mZAQi4vbvri81WyCeSjwKwlH_eHuwbb0aTGAZwk/edit*
@@ -28,7 +28,9 @@
         const entries = [];
         for (let line of lines) {
             const cols = line.split('\t');
-            if (cols.length < 6) continue;
+            while (cols.length < 6) {
+                cols.push('');
+            }
             const date = cols[0].trim();
             const taskTitle = cols[1].trim();
             const minutes = cols[4].trim();
@@ -75,7 +77,7 @@
         setTimeout(() => {
             toast.style.opacity = '0';
             setTimeout(() => toast.remove(), 500);
-        }, 7000); // чуть больше времени на чтение
+        }, 7000);
     }
 
     function waitForElement(selector, timeout = 15000) {
@@ -119,101 +121,113 @@
     }
 
     async function processTask(entry) {
-        if (!window.location.href.includes(entry.key)) {
-            console.error('URL mismatch');
-            await addLog(entry, false, 'несоответствие URL');
-            return false;
-        }
-        let timeBtn;
         try {
-            timeBtn = await waitForElement('div.TimeTracking button.Bubble-Button');
-        } catch (e) {
-            await addLog(entry, false, 'не найдена кнопка времени');
-            return false;
-        }
-        timeBtn.click();
-        await sleep(700);
-        let spentField;
-        try {
-            spentField = await waitForElement('input.g-text-input__control[id^="spent-field"]', 10000);
-        } catch (e) {
-            await addLog(entry, false, 'не появилось поле Списано');
-            return false;
-        }
-        spentField.focus();
-        setNativeValue(spentField, `${entry.minutes}м`);
-        await sleep(100);
-        spentField.blur();
-        let commentField;
-        try {
-            commentField = await waitForElement('textarea.g-text-area__control[id^="comment-field"]', 5000);
-        } catch (e) {
-            commentField = null;
-        }
-        if (commentField) {
-            commentField.focus();
-            setNativeValue(commentField, entry.comment);
+            if (!window.location.href.includes(entry.key)) {
+                await addLog(entry, false, 'несоответствие URL');
+                return false;
+            }
+            let timeBtn;
+            try {
+                timeBtn = await waitForElement('div.TimeTracking button.Bubble-Button');
+            } catch (e) {
+                await addLog(entry, false, 'не найдена кнопка времени');
+                return false;
+            }
+            timeBtn.click();
+            await sleep(700);
+            let spentField;
+            try {
+                spentField = await waitForElement('input.g-text-input__control[id^="spent-field"]', 10000);
+            } catch (e) {
+                await addLog(entry, false, 'не появилось поле Списано');
+                return false;
+            }
+            spentField.focus();
+            setNativeValue(spentField, `${entry.minutes}м`);
             await sleep(100);
-            commentField.blur();
-        }
-        await sleep(200);
-        let saveBtn;
-        try {
-            saveBtn = await waitForElement('button.FieldEdit-Submit', 5000);
+            spentField.blur();
+            let commentField;
+            try {
+                commentField = await waitForElement('textarea.g-text-area__control[id^="comment-field"]', 5000);
+            } catch (e) {
+                commentField = null;
+            }
+            if (commentField) {
+                commentField.focus();
+                setNativeValue(commentField, entry.comment);
+                await sleep(100);
+                commentField.blur();
+            }
+            await sleep(200);
+            let saveBtn;
+            try {
+                saveBtn = await waitForElement('button.FieldEdit-Submit', 5000);
+            } catch (e) {
+                await addLog(entry, false, 'не найдена кнопка Сохранить');
+                return false;
+            }
+            if (saveBtn.hasAttribute('disabled')) {
+                await sleep(500);
+            }
+            saveBtn.click();
+            await sleep(2000);
+            await addLog(entry, true);
+            return true;
         } catch (e) {
-            await addLog(entry, false, 'не найдена кнопка Сохранить');
+            console.error('processTask error', e);
+            await addLog(entry, false, 'непредвиденная ошибка: ' + e.message);
             return false;
         }
-        if (saveBtn.hasAttribute('disabled')) {
-            await sleep(500);
-        }
-        saveBtn.click();
-        await sleep(2000);
-        await addLog(entry, true);
-        return true;
     }
 
     async function checkAndProcessQueue() {
-        const queue = await GM_getValue(STORAGE_KEY, []);
-        if (!queue.length) return;
+        try {
+            const queue = await GM_getValue(STORAGE_KEY, []);
+            if (!queue.length) return;
 
-        const taskMatch = window.location.href.match(/https:\/\/tracker\.yandex\.ru\/([A-Z]+-\d+)/);
-        if (!taskMatch) return;
+            const taskMatch = window.location.href.match(/https:\/\/tracker\.yandex\.ru\/([A-Z]+-\d+)/);
+            if (!taskMatch) return;
 
-        const currentKey = taskMatch[1];
-        if (queue[0].key !== currentKey) {
-            console.warn('Queue mismatch, clearing');
-            // Покажем то, что уже успело накопиться, перед сбросом
+            const currentKey = taskMatch[1];
+            if (queue[0].key !== currentKey) {
+                console.warn('Queue mismatch, clearing');
+                const log = await GM_getValue(LOG_KEY, []);
+                if (log.length > 0) {
+                    const numberedLog = log.map((e, i) => `${i+1}. ${e}`).join('\n');
+                    showToast('⚠️ Очередь сбита.\n' + numberedLog, 'error');
+                }
+                await GM_setValue(STORAGE_KEY, []);
+                await GM_setValue(LOG_KEY, []);
+                return;
+            }
+
+            console.log(`Processing: ${currentKey}`);
+            await processTask(queue[0]);
+
+            queue.shift();
+
+            if (queue.length === 0) {
+                const log = await GM_getValue(LOG_KEY, []);
+                const numberedLog = log.map((entry, idx) => `${idx+1}. ${entry}`).join('\n');
+                const hasError = log.some(e => e.startsWith('❌'));
+                showToast(numberedLog || 'Нет задач', hasError ? 'error' : 'success');
+                await GM_setValue(STORAGE_KEY, []);
+                await GM_setValue(LOG_KEY, []);
+                return;
+            }
+
+            await GM_setValue(STORAGE_KEY, queue);
+            window.location.href = `https://tracker.yandex.ru/${queue[0].key}`;
+        } catch (e) {
+            console.error('checkAndProcessQueue error', e);
             const log = await GM_getValue(LOG_KEY, []);
             if (log.length > 0) {
                 const numberedLog = log.map((e, i) => `${i+1}. ${e}`).join('\n');
-                showToast('⚠️ Очередь сбита.\n' + numberedLog, 'error');
+                showToast('⚠️ Критическая ошибка:\n' + numberedLog, 'error');
             }
             await GM_setValue(STORAGE_KEY, []);
             await GM_setValue(LOG_KEY, []);
-            return;
         }
-
-        console.log(`Processing: ${currentKey}`);
-        const success = await processTask(queue[0]);
-
-        // Удаляем обработанную задачу из очереди в любом случае
-        queue.shift();
-
-        if (queue.length === 0) {
-            // Все задачи обработаны — показываем итоговый лог
-            const log = await GM_getValue(LOG_KEY, []);
-            const numberedLog = log.map((entry, idx) => `${idx+1}. ${entry}`).join('\n');
-            const hasError = log.some(e => e.startsWith('❌'));
-            showToast(numberedLog || 'Нет задач', hasError ? 'error' : 'success');
-            await GM_setValue(STORAGE_KEY, []);
-            await GM_setValue(LOG_KEY, []);
-            return;
-        }
-
-        // Ещё есть задачи — сохраняем обновлённую очередь и переходим
-        await GM_setValue(STORAGE_KEY, queue);
-        window.location.href = `https://tracker.yandex.ru/${queue[0].key}`;
     }
 
     function addButtonToSheet() {
