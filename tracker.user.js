@@ -249,7 +249,7 @@
         btn.textContent = '📋 Скопируй и нажми';
         btn.style.cssText = `
             position: fixed;
-            bottom: 20px;
+            bottom: 40px;
             right: 20px;
             z-index: 9999;
             padding: 12px 20px;
