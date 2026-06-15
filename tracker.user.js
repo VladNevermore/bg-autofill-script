@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Перенос трека времени
 // @namespace    http://tampermonkey.net/
-// @version      2.5
-// @description  -
+// @version      2.6
+// @description  --
 // @author       VladNevermore
 // @match        https://docs.google.com/spreadsheets/d/1Aey5mZAQi4vbvri81WyCeSjwKwlH_eHuwbb0aTGAZwk/edit*
 // @match        https://tracker.yandex.ru/*
@@ -122,16 +122,21 @@
 
     async function processTask(entry) {
         try {
-
             let timeBtn;
             try {
-                timeBtn = await waitForElement('div.TimeTracking button.Bubble-Button');
+                timeBtn = await waitForElement('div.TimeTracking button.Bubble-Button', 2000);
             } catch (e) {
-                await addLog(entry, false, 'не найдена кнопка времени');
-                return false;
+                try {
+                    timeBtn = await waitForElement('div.TimeTracking-wrapper[role="button"]', 2000);
+                } catch (e2) {
+                    await addLog(entry, false, 'не найдена кнопка времени');
+                    return false;
+                }
             }
+
             timeBtn.click();
             await sleep(700);
+
             let spentField;
             try {
                 spentField = await waitForElement('input.g-text-input__control[id^="spent-field"]', 10000);
@@ -143,6 +148,7 @@
             setNativeValue(spentField, `${entry.minutes}м`);
             await sleep(100);
             spentField.blur();
+
             let commentField;
             try {
                 commentField = await waitForElement('textarea.g-text-area__control[id^="comment-field"]', 5000);
@@ -155,7 +161,9 @@
                 await sleep(100);
                 commentField.blur();
             }
+
             await sleep(200);
+
             let saveBtn;
             try {
                 saveBtn = await waitForElement('button.FieldEdit-Submit', 5000);
@@ -168,6 +176,7 @@
             }
             saveBtn.click();
             await sleep(2000);
+
             await addLog(entry, true);
             return true;
         } catch (e) {
