@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name [ALL] CRM + банки (единый)
 // @namespace http://tampermonkey.net/
-// @version 6.5
+// @version 7.2
 // @description Автосохранение, автозаполнение заявок и анкет банков
 // @author VladNevermore
 // @match https://crm.finleo.ru/crm/orders/*
 // @match https://bg.realistbank.ru/new_ticket*
 // @match https://bg.alfabank.ru/aft-ui/order*
 // @match https://tendertech.ru/front/table/my-applications*
-// @match https://tendertech.ru/*
+// @match https://tendertech.ru/front/application/*
 // @match https://bgol.akbars.ru/tasks?add-task=bg-pa
 // @match https://likebg.ru/agent/request/create
 // @match https://assist24.kubankredit.ru/create
@@ -62,6 +62,7 @@
 `);
 
 const log = (msg, data) => console.log(`[AllInOne] ${msg}`, data || '');
+
 const showStatus = (msg, duration = 4000) => {
     const old = document.querySelector('.tm-status');
     if (old) old.remove();
@@ -166,6 +167,7 @@ async function ensureDataSaved() {
 }
 
 function saveParams() {
+    log('Сохраняем параметры заявки...');
     const inn = getInn();
     if (!inn) { log('ИНН не найден'); showStatus('❌ ИНН не найден'); return false; }
     const need = findFieldByLabel('Потребность');
@@ -235,6 +237,7 @@ function saveParams() {
 }
 
 function saveProfile() {
+    log('Сохраняем анкету...');
     const profileRows = document.querySelectorAll('.sc-867848fc-0');
     if (profileRows.length === 0) { log('Анкета не найдена'); showStatus('❌ Анкета не найдена'); return false; }
     const profile = {};
@@ -263,14 +266,15 @@ function saveProfile() {
 }
 
 function initCRM() {
+    log('Инициализация CRM-интерфейса');
     const bankConfigs = [
         { keyword: 'РЕАЛИСТ', className: 'realist-create-btn', flag: 'autoFillRealist', url: 'https://bg.realistbank.ru/new_ticket/stage_0?product_id=1', group: 'realist' },
         { keyword: 'АЛЬФА', className: 'alfa-create-btn', flag: 'autoFillAlfa', url: 'https://bg.alfabank.ru/aft-ui/order', group: 'alfa' },
-        { keyword: 'УРАЛСИБ', className: 'tendertech-create-btn', flag: 'autoFillTendertech', url: 'https://tendertech.ru/front', group: 'tendertech' },
-        { keyword: 'ТКБ БАНК', className: 'tendertech-create-btn', flag: 'autoFillTendertech', url: 'https://tendertech.ru/front', group: 'tendertech' },
-        { keyword: 'АГРОРОС', className: 'tendertech-create-btn', flag: 'autoFillTendertech', url: 'https://tendertech.ru/front', group: 'tendertech' },
-        { keyword: 'Калуга', className: 'tendertech-create-btn', flag: 'autoFillTendertech', url: 'https://tendertech.ru/front', group: 'tendertech' },
-        { keyword: 'МОСКОВСКИЙ КРЕДИТНЫЙ', className: 'tendertech-create-btn', flag: 'autoFillTendertech', url: 'https://tendertech.ru/front', group: 'tendertech' },
+        { keyword: 'УРАЛСИБ', className: 'tendertech-create-btn', flag: 'autoFillTendertech', url: 'https://tendertech.ru/front/table/my-applications', group: 'tendertech' },
+        { keyword: 'ТКБ БАНК', className: 'tendertech-create-btn', flag: 'autoFillTendertech', url: 'https://tendertech.ru/front/table/my-applications', group: 'tendertech' },
+        { keyword: 'АГРОРОС', className: 'tendertech-create-btn', flag: 'autoFillTendertech', url: 'https://tendertech.ru/front/table/my-applications', group: 'tendertech' },
+        { keyword: 'Калуга', className: 'tendertech-create-btn', flag: 'autoFillTendertech', url: 'https://tendertech.ru/front/table/my-applications', group: 'tendertech' },
+        { keyword: 'МОСКОВСКИЙ КРЕДИТНЫЙ', className: 'tendertech-create-btn', flag: 'autoFillTendertech', url: 'https://tendertech.ru/front/table/my-applications', group: 'tendertech' },
         { keyword: 'АК БАРС', className: 'akbars-create-btn', flag: 'autoFillAkbars', url: 'https://bgol.akbars.ru/tasks?add-task=bg-pa', group: 'akbars' },
         { keyword: 'ГТ банк', className: 'likebg-create-btn', flag: 'autoFillLikebg', url: 'https://likebg.ru/agent/request/create', group: 'likebg' },
         { keyword: 'Трансстройбанк', className: 'likebg-create-btn', flag: 'autoFillLikebg', url: 'https://likebg.ru/agent/request/create', group: 'likebg' },
@@ -297,6 +301,7 @@ function initCRM() {
     }
 
     async function openSingleBank(cfg) {
+        log(`Открываем банк: ${cfg.keyword}`);
         const ok = await ensureDataSaved();
         if (!ok) return;
         GM_setValue(cfg.flag, true);
@@ -310,6 +315,7 @@ function initCRM() {
     }
 
     async function openAllBanks() {
+        log('Открываем все банки');
         const rows = document.querySelectorAll('tr.V5pxh');
         const seenGroups = new Set();
         const openUrls = [];
@@ -341,6 +347,7 @@ function initCRM() {
     }
 
     function addBankButtons() {
+        log('Добавление кнопок "Завести"');
         const rows = document.querySelectorAll('tr.V5pxh');
         rows.forEach(row => {
             const cells = row.querySelectorAll('td');
@@ -392,9 +399,13 @@ function initCRM() {
     new MutationObserver(addBankButtons).observe(document.body, { childList: true, subtree: true });
 }
 
+
 async function fillRealistForm() {
+    if (realistFormRunning) return;
+    realistFormRunning = true;
+    log('=== Начало заполнения Реалист ===');
     const data = GM_getValue('bankRequestData', null);
-    if (!data || !data.inn) { showStatus('❌ Нет данных'); return; }
+    if (!data || !data.inn) { showStatus('❌ Нет данных'); realistFormRunning = false; return; }
     const status = showStatus('⏳ Реалист...', 0);
     try {
         const selectValue = async (sel, val) => {
@@ -413,11 +424,14 @@ async function fillRealistForm() {
             await sleep(300);
         };
 
+        log('Выбираем продукт 1');
         await selectValue('#product_id', '1');
         const lawMap = { '44': '1', '223': '2', '615': '3', 'Коммерческий': '0' };
+        log(`Закон: ${data.law} -> ${lawMap[data.law] || '0'}`);
         await selectValue('#type_bank_guarantee', lawMap[data.law] || '0');
         await selectValue('#form_bg', '2');
 
+        log('Вводим ИНН принципала');
         const partyInput = await waitFor('input.w-dadata-party');
         partyInput.value = data.inn;
         partyInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -427,32 +441,77 @@ async function fillRealistForm() {
         if (firstSugg) firstSugg.click();
         await sleep(1500);
 
+        log('Заполняем сумму БГ');
         await fillField('#bg_sum', data.sum);
+
         if (data.endDate) {
+            log('Заполняем дату окончания через календарь');
             const dateInput = await waitFor('#bg_end_at');
             dateInput.focus();
+            dateInput.value = '';
+            dateInput.dispatchEvent(new Event('input', { bubbles: true }));
             dateInput.value = data.endDate;
             dateInput.dispatchEvent(new Event('input', { bubbles: true }));
             dateInput.dispatchEvent(new Event('change', { bubbles: true }));
-            await sleep(300);
-            document.body.click();
             await sleep(500);
+            const calendar = document.querySelector('.datepicker.dropdown-menu[style*="display: block"]');
+            if (calendar) {
+                const day = parseInt(data.endDate.split('.')[0], 10);
+                log(`Ищем день ${day} в календаре`);
+                const dayCells = calendar.querySelectorAll('td.day:not(.disabled):not(.old)');
+                let clicked = false;
+                for (const cell of dayCells) {
+                    if (parseInt(cell.textContent, 10) === day) {
+                        cell.click();
+                        clicked = true;
+                        await sleep(300);
+                        break;
+                    }
+                }
+                if (!clicked) {
+                    log('День не найден в текущем месяце, закрываем календарь и вводим в hidden');
+                    document.body.click();
+                    await sleep(200);
+                    const hiddenInput = document.querySelector('input[name="bg_end_at"]');
+                    if (hiddenInput) {
+                        hiddenInput.value = data.endDate;
+                        hiddenInput.dispatchEvent(new Event('input', { bubbles: true }));
+                        hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }
+            } else {
+                log('Календарь не появился, вводим в скрытое поле');
+                const hiddenInput = document.querySelector('input[name="bg_end_at"]');
+                if (hiddenInput) {
+                    hiddenInput.value = data.endDate;
+                    hiddenInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
+            document.body.click();
+            await sleep(300);
         }
+
         await fillField('#auction_number', data.notice);
         let realistType = '0';
         if (data.needText.includes('БГ на исполнение')) realistType = '2';
         else if (data.needText.includes('БГ на гарантийный срок')) realistType = '3';
         else if (data.needText.includes('БГ на участие')) realistType = '0';
+        log(`Тип гарантии Реалист: ${realistType}`);
         await selectValue('#bg_reason', realistType);
         status.textContent = '✅ Реалист заполнен';
         setTimeout(() => status.remove(), 3000);
     } catch (e) {
+        log('Ошибка в Реалист', e);
         status.textContent = `❌ Ошибка: ${e.message}`;
         setTimeout(() => status.remove(), 5000);
+    } finally {
+        realistFormRunning = false;
     }
 }
 
 async function fillRealistProfile() {
+    log('=== Заполнение анкеты Реалист ===');
     const profile = GM_getValue('clientProfileData', null);
     const params = GM_getValue('bankRequestData', null);
     if (!profile) { showStatus('❌ Анкета не сохранена'); return; }
@@ -464,6 +523,7 @@ async function fillRealistProfile() {
         el.dispatchEvent(new Event('change', { bubbles: true }));
     };
     try {
+        log('Устанавливаем адреса');
         const actualAsLegal = document.querySelector('#client_actual_address_as_legal');
         if (actualAsLegal && !actualAsLegal.checked) actualAsLegal.click();
         const postAsLegal = document.querySelector('#client_post_address_as_legal');
@@ -473,6 +533,7 @@ async function fillRealistProfile() {
 
         const director = profile.persons?.find(p => p.title?.includes('Генеральный директор') || p.title?.includes('Директор'));
         if (director) {
+            log('Заполняем данные директора');
             setInput(await waitFor('#client_head_position'), 'Генеральный директор');
             setInput(await waitFor('#client_head_full_name'), director['ФИО:'] || '');
             if (director['Серия паспорта:']) setInput(await waitFor('#client_head_passport_series'), director['Серия паспорта:']);
@@ -490,6 +551,7 @@ async function fillRealistProfile() {
         setInput(await waitFor('#client_website'), '-');
 
         if (params) {
+            log('Заполняем бенефициара');
             const beneficiaryInput = await waitFor('#beneficiary_full_name');
             beneficiaryInput.value = params.customerName || '';
             beneficiaryInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -504,6 +566,7 @@ async function fillRealistProfile() {
 
         const founders = profile.persons?.filter(p => p.title?.includes('Учредитель'));
         if (founders && founders.length > 0) {
+            log('Учредители найдены, заполняем');
             const deleteButtons = document.querySelectorAll('#founders .gsa-script-delete');
             for (let i = 1; i < deleteButtons.length; i++) deleteButtons[i].click();
             const firstFounder = founders[0];
@@ -515,6 +578,7 @@ async function fillRealistProfile() {
 
         const beneficial = profile.persons?.find(p => p.title?.includes('Учредитель'));
         if (beneficial) {
+            log('Заполняем бенефициарного владельца');
             setInput(await waitFor('[data-gsa-index="name"]'), beneficial['ФИО:'] || '');
             if (beneficial['Адрес регистрации:']) setInput(await waitFor('[data-gsa-index="legal_address"]'), beneficial['Адрес регистрации:']);
             if (beneficial['ИНН:']) setInput(await waitFor('[data-gsa-index="inn"]'), beneficial['ИНН:']);
@@ -528,6 +592,7 @@ async function fillRealistProfile() {
 
         const requisites = profile.persons?.find(p => p.title?.includes('Реквизиты'));
         if (requisites && requisites['БИК:']) {
+            log('Заполняем банковские реквизиты');
             const bankRows = document.querySelectorAll('#checking_accounts .bank-container');
             if (bankRows.length > 0) {
                 const bikInput = bankRows[0].querySelector('[data-gsa-index="3"]');
@@ -543,14 +608,19 @@ async function fillRealistProfile() {
         status.textContent = '✅ Анкета Реалист заполнена';
         setTimeout(() => status.remove(), 5000);
     } catch (e) {
+        log('Ошибка в анкете Реалист', e);
         status.textContent = `❌ Ошибка: ${e.message}`;
         setTimeout(() => status.remove(), 5000);
     }
 }
 
 async function fillAlfaForm() {
+    if (alfaFormRunning) return;
+    alfaFormRunning = true;
+
+    log('=== Начало заполнения Альфа-Банк ===');
     const data = GM_getValue('bankRequestData', null);
-    if (!data || !data.inn) { showStatus('❌ Нет данных'); return; }
+    if (!data || !data.inn) { showStatus('❌ Нет данных'); alfaFormRunning = false; return; }
     const status = showStatus('⏳ Альфа...', 0);
     const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
     const setInput = (el, val) => {
@@ -559,6 +629,7 @@ async function fillAlfaForm() {
         el.dispatchEvent(new Event('change', { bubbles: true }));
     };
     try {
+        log('Ввод ИНН');
         const principalInput = await waitFor('[data-test-id="principal-field"]');
         principalInput.focus();
         setInput(principalInput, data.inn);
@@ -566,49 +637,96 @@ async function fillAlfaForm() {
         const suggestion = document.querySelector('[role="option"], .suggestions-suggestion');
         if (suggestion) { suggestion.click(); await sleep(1500); }
 
-        let needType = 'исполнения';
-        if (data.needText.includes('БГ на участие')) needType = 'заявки';
-        else if (data.needText.includes('БГ на гарантийный срок')) needType = 'гарантийных';
-        else if (data.needText.includes('БГ на исполнение')) needType = 'исполнения';
+        let primaryKeyword = '';
+        if (data.needText.includes('БГ на участие')) primaryKeyword = 'заявки на участие';
+        else if (data.needText.includes('БГ на гарантийный срок')) primaryKeyword = 'гарантийного периода';
+        else if (data.needText.includes('БГ на исполнение')) primaryKeyword = 'исполнение контракта';
+        else primaryKeyword = 'исполнение контракта';
+
+        log(`Определён тип гарантии: ${primaryKeyword}`);
 
         const typeSelect = await waitFor('[data-test-id="bankGuaranteeType"] .select__field_pkyjw');
         typeSelect.click();
-        await sleep(800);
-        const opts = document.querySelectorAll('[role="option"]');
+        const typeOption = await waitFor(`[data-test-id="bankGuaranteeType-option"]`, 5000);
+        await sleep(400);
+        const opts = document.querySelectorAll('[data-test-id="bankGuaranteeType-option"]');
+
+        log('Доступные опции вида гарантии:');
+        opts.forEach((opt, i) => log(`  ${i}: ${opt.textContent.trim()}`));
+
+        let clicked = false;
+
         for (const opt of opts) {
-            if (opt.textContent.includes(needType)) { opt.click(); await sleep(500); break; }
+            if (opt.textContent.toLowerCase().includes(primaryKeyword.toLowerCase())) {
+                log(`Выбираем опцию: ${opt.textContent.trim()}`);
+                opt.click();
+                clicked = true;
+                await sleep(500);
+                break;
+            }
         }
 
+        if (!clicked) {
+            const fallbackKeywords = ['гарантийного периода', 'исполнение контракта', 'заявки на участие'];
+            for (const kw of fallbackKeywords) {
+                for (const opt of opts) {
+                    if (opt.textContent.toLowerCase().includes(kw.toLowerCase())) {
+                        log(`Фолбэк: выбираем опцию с "${kw}"`);
+                        opt.click();
+                        clicked = true;
+                        await sleep(500);
+                        break;
+                    }
+                }
+                if (clicked) break;
+            }
+        }
+
+        if (!clicked) {
+            log('КРИТИЧНО: не удалось выбрать вид гарантии – ни одна опция не подошла');
+        }
+
+        log('Ввод номера закупки');
         const tradeInput = await waitFor('[data-test-id="tradeNumber"]');
         setInput(tradeInput, data.notice || 'б/н');
         await sleep(4000);
 
         const lawValMap = { '44': '44', '223': '223', '615': '185-615', 'Коммерческий': 'Коммерческий' };
         const lawVal = lawValMap[data.law] || '44';
+        log(`Выбор закона: ${lawVal}`);
         const radioLaw = document.querySelector(`[data-test-id="law.${lawVal}"]`);
         if (radioLaw) radioLaw.click();
 
         if (data.law === '44') {
+                        log('44-ФЗ: выбираем публикацию "Реестр ЕИС"');
             const pubSelect = await waitFor('[data-test-id="publicationRegistry"] .select__field_pkyjw');
             pubSelect.click();
-            await sleep(800);
-            const pubOpts = document.querySelectorAll('[role="option"]');
+            const pubOption = await waitFor(`[data-test-id="publicationRegistry-option"]`, 5000);
+            await sleep(400);
+            const pubOpts = document.querySelectorAll('[data-test-id="publicationRegistry-option"]');
             for (const opt of pubOpts) {
-                if (opt.textContent.includes('В реестре ЕИС')) { opt.click(); await sleep(500); break; }
+                if (opt.textContent.includes('Реестр ЕИС')) {
+                    opt.click();
+                    await sleep(500);
+                    break;
+                }
             }
         }
 
         if (data.law === '223') {
+            log('223-ФЗ: вводим ИКЗ');
             const ikzInput = await waitFor('[data-test-id="ikz"]');
             setInput(ikzInput, '111111111111111111111111111111111111');
         }
 
         if (data.proposedPrice) {
+            log('Ввод предложенной цены');
             const finalInput = await waitFor('[data-test-id="finalAmount"]');
             setInput(finalInput, data.proposedPrice);
         }
 
         const hasAdvance = data.advanceAmount && data.advanceAmount !== 'Нет';
+        log(`Аванс: ${hasAdvance}`);
         const switchAv = document.querySelector('[data-test-id="prepaymentExists"]');
         if (switchAv && switchAv.checked !== hasAdvance) switchAv.click();
 
@@ -627,12 +745,14 @@ async function fillAlfaForm() {
         }
 
         const isWarranty = data.needText.includes('гарантийный срок');
+        log(`Гарантийные обязательства: ${isWarranty}`);
         const switchWarr = document.querySelector('[data-test-id="isGuaranteePeriod"]');
         if (switchWarr && switchWarr.checked !== isWarranty) switchWarr.click();
 
         const radioDate = document.querySelector('[data-test-id="termStartDateType.FROM_ISSUE_DATE"]');
         if (radioDate) radioDate.click();
         if (data.endDate) {
+            log('Дата окончания');
             const endInput = await waitFor('[data-test-id="guaranteeDateRange.to"]');
             setInput(endInput, data.endDate);
         }
@@ -653,6 +773,7 @@ async function fillAlfaForm() {
         await sleep(1000);
         const editBtn = document.querySelector('[data-test-id="beneficiaries.[0].editButton"]');
         if (editBtn) {
+            log('Редактируем бенефициара');
             editBtn.click();
             await sleep(1000);
             const bgAmountInput = await waitFor('[data-test-id="beneficiaries[0].bgAmount"]', 10000);
@@ -665,6 +786,7 @@ async function fillAlfaForm() {
             const saveBtn = document.querySelector('[data-test-id="beneficiaries.modal.save"]');
             if (saveBtn) { saveBtn.disabled = false; saveBtn.click(); await sleep(500); }
         } else {
+            log('Добавляем бенефициара');
             const addBeneficiaryBtn = await waitFor('[data-test-id="beneficiaries.addButton"]');
             addBeneficiaryBtn.click();
             await sleep(1000);
@@ -696,10 +818,13 @@ async function fillAlfaForm() {
         console.error('[Alfa] Error:', e);
         status.textContent = `❌ Ошибка: ${e.message}`;
         setTimeout(() => status.remove(), 5000);
+    } finally {
+        alfaFormRunning = false;
     }
 }
 
 async function fillAlfaProfile() {
+    log('=== Заполнение анкеты Альфа-Банка ===');
     const profile = GM_getValue('clientProfileData', null);
     if (!profile) { showStatus('❌ Анкета не сохранена'); return; }
     const status = showStatus('⏳ Заполняем анкету Альфа-Банка...', 0);
@@ -710,6 +835,7 @@ async function fillAlfaProfile() {
         el.dispatchEvent(new Event('change', { bubbles: true }));
     };
     try {
+        log('Добавляем банковский счёт');
         const addAccountBtn = await waitFor('[data-test-id="company.bankAccounts.addButton"]', 5000);
         addAccountBtn.click();
         await sleep(1000);
@@ -729,6 +855,7 @@ async function fillAlfaProfile() {
         if (saveAccountBtn) { saveAccountBtn.disabled = false; saveAccountBtn.click(); }
         await sleep(1000);
 
+        log('Редактируем контактное лицо');
         const contactEditBtn = await waitFor('[data-test-id="company.contactPerson.editButton"]');
         contactEditBtn.click();
         await sleep(1000);
@@ -745,6 +872,7 @@ async function fillAlfaProfile() {
         if (saveContactBtn) { saveContactBtn.disabled = false; saveContactBtn.click(); }
         await sleep(1000);
 
+        log('Редактируем руководителя');
         const headEditBtn = await waitFor('[data-test-id="company.head.editButton"]');
         headEditBtn.click();
         await sleep(1000);
@@ -767,6 +895,7 @@ async function fillAlfaProfile() {
         if (saveHeadBtn) { saveHeadBtn.disabled = false; saveHeadBtn.click(); }
         await sleep(1000);
 
+        log('Добавляем подписанта');
         const signerAddBtn = await waitFor('[data-test-id="company.signer.addButton"]');
         signerAddBtn.click();
         await sleep(1000);
@@ -783,18 +912,21 @@ async function fillAlfaProfile() {
         status.textContent = '✅ Анкета Альфа-Банка заполнена';
         setTimeout(() => status.remove(), 5000);
     } catch (e) {
+        log('Ошибка в анкете Альфа', e);
         status.textContent = `❌ Ошибка: ${e.message}`;
         setTimeout(() => status.remove(), 5000);
     }
 }
 
 async function fillTendertechForm() {
+    log('=== Начало заполнения Тендертех ===');
     const data = GM_getValue('bankRequestData', null);
     if (!data || !data.inn) { showStatus('❌ Нет данных'); return; }
     const status = showStatus('⏳ Тендертех...', 0);
     try {
         const isTablePage = window.location.href.includes('/table/my-applications');
         if (isTablePage) {
+            log('Создание новой заявки');
             const newBtn = await waitFor('[data-qa="buttonNewApplication"]');
             newBtn.click();
             await sleep(1500);
@@ -811,6 +943,7 @@ async function fillTendertechForm() {
                 'БГ на гарантийный срок': 'Банковская гарантия на обеспечение гарантийных обязательств'
             };
             let targetType = typeMap[data.needText] || 'Банковская гарантия на исполнение контракта';
+            log(`Тип гарантии: ${targetType}`);
             const options = document.querySelectorAll('.v-menu__content .options__item');
             for (const opt of options) {
                 if (opt.textContent.trim() === targetType) { opt.click(); break; }
@@ -824,9 +957,11 @@ async function fillTendertechForm() {
             await sleep(3000);
             const clientRow = document.querySelector('table tbody tr:not(.no-border-bottom)');
             if (clientRow) {
+                log('Клиент найден в таблице');
                 const radioInTable = clientRow.querySelector('input[type="radio"]');
                 if (radioInTable) { radioInTable.click(); await sleep(300); }
             } else {
+                log('Клиент не найден, вводим ИНН вручную');
                 const radioInn = document.querySelector('[data-qa="modalNewApplicationRadioInn"] input[type="radio"]');
                 if (radioInn) { radioInn.click(); await sleep(300); }
                 const innInput = await waitFor('[data-qa="modalNewApplicationInputInn"]');
@@ -849,6 +984,7 @@ async function fillTendertechForm() {
             el.dispatchEvent(new Event('change', { bubbles: true }));
         };
 
+        log('Заполнение параметров');
         const sumBg = await waitFor('[data-qa="inputSumBgParameters"]');
         setInput(sumBg, data.sum || '');
         if (data.startDate) {
@@ -877,16 +1013,19 @@ async function fillTendertechForm() {
         status.textContent = '✅ Тендертех заполнен';
         setTimeout(() => status.remove(), 5000);
     } catch (e) {
+        log('Ошибка в Тендертех', e);
         status.textContent = `❌ Ошибка: ${e.message}`;
         setTimeout(() => status.remove(), 5000);
     }
 }
 
 async function fillAkbarsForm() {
+    log('=== Начало заполнения Ак Барс ===');
     const data = GM_getValue('bankRequestData', null);
     if (!data) { showStatus('❌ Нет данных'); return; }
     const status = showStatus('⏳ Ак Барс...', 0);
     try {
+        log('Ввод ИНН');
         const principalInput = await waitFor('input.fzp-company__autocomplete');
         principalInput.value = data.inn;
         principalInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -910,6 +1049,7 @@ async function fillAkbarsForm() {
         if (data.needText.includes('БГ на участие')) bgType = '2';
         else if (data.needText.includes('БГ на исполнение')) bgType = '3';
         else if (data.needText.includes('БГ на гарантийный срок')) bgType = '4';
+        log(`Тип гарантии: ${bgType}`);
         const selectEl = await waitFor('select[ng-model="model.data.bankGuaranteeTypeRefId"]');
         selectEl.value = bgType;
         selectEl.dispatchEvent(new Event('change', { bubbles: true }));
@@ -925,6 +1065,7 @@ async function fillAkbarsForm() {
 
         const lotsContainer = document.querySelector('div[ng-repeat="lot in model.data.purchase.lots"]');
         if (lotsContainer) {
+            log('Найден контейнер лотов');
             const scope = angular.element(lotsContainer).scope();
             const lot = scope.lot;
             if (lot) {
@@ -953,12 +1094,14 @@ async function fillAkbarsForm() {
         }
         setTimeout(() => status.remove(), 5000);
     } catch (e) {
+        log('Ошибка в Ак Барс', e);
         status.textContent = `❌ Ошибка: ${e.message}`;
         setTimeout(() => status.remove(), 5000);
     }
 }
 
 async function fillLikebgForm() {
+    log('=== Начало заполнения LikeBG ===');
     const data = GM_getValue('bankRequestData', null);
     const profile = GM_getValue('clientProfileData', null);
     if (!data || !data.inn) { showStatus('❌ Нет данных'); return; }
@@ -972,12 +1115,14 @@ async function fillLikebgForm() {
                 el.dispatchEvent(new Event('change', { bubbles: true }));
             }
         };
+        log('Ввод ИНН');
         const innInput = await waitFor('.input-autocomplete input');
         setValue(innInput, data.inn);
         await sleep(2000);
         const sugg = document.querySelector('.input-autocomplete__suggestion-wrap li, .suggestions-suggestion');
         if (sugg) { sugg.click(); await sleep(1000); }
 
+        log('Поиск поля "Реестровый номер закупки"');
         const noticeContainers = document.querySelectorAll('.input-autocomplete');
         let noticeInput = null;
         for (const container of noticeContainers) {
@@ -1047,6 +1192,7 @@ async function fillLikebgForm() {
         if (nextBtn2) { nextBtn2.click(); await sleep(2000); }
 
         if (director) {
+            log('Заполнение данных директора');
             const parts = (director['ФИО:'] || '').split(' ');
             setValue(await waitFor('.text-input input[placeholder*="Фамилия"]'), parts[0] || '');
             setValue(await waitFor('.text-input input[placeholder*="Имя"]'), parts[1] || '');
@@ -1108,12 +1254,14 @@ async function fillLikebgForm() {
         status.textContent = '✅ LikeBG заполнен';
         setTimeout(() => status.remove(), 5000);
     } catch (e) {
+        log('Ошибка в LikeBG', e);
         status.textContent = `❌ Ошибка: ${e.message}`;
         setTimeout(() => status.remove(), 5000);
     }
 }
 
 async function fillKubanKreditForm() {
+    log('=== Начало заполнения Кубань Кредит ===');
     const data = GM_getValue('bankRequestData', null);
     if (!data || !data.inn) { showStatus('❌ Нет данных'); return; }
     const status = showStatus('⏳ Кубань Кредит...', 0);
@@ -1124,6 +1272,7 @@ async function fillKubanKreditForm() {
         el.dispatchEvent(new Event('change', { bubbles: true }));
     };
     try {
+        log('Ввод ИНН');
         const innInput = await waitFor('input[name="entity_inn"]');
         setInput(innInput, data.inn);
         await sleep(500);
@@ -1153,12 +1302,14 @@ async function fillKubanKreditForm() {
         status.textContent = '✅ Кубань Кредит заполнен';
         setTimeout(() => status.remove(), 5000);
     } catch (e) {
+        log('Ошибка в Кубань Кредит', e);
         status.textContent = `❌ Ошибка: ${e.message}`;
         setTimeout(() => status.remove(), 5000);
     }
 }
 
 async function fillVneshfinbankForm() {
+    log('=== Начало заполнения Внешфинбанк ===');
     const data = GM_getValue('bankRequestData', null);
     if (!data || !data.inn) { showStatus('❌ Нет данных'); return; }
     const status = showStatus('⏳ Внешфинбанк...', 0);
@@ -1169,6 +1320,7 @@ async function fillVneshfinbankForm() {
         el.dispatchEvent(new Event('change', { bubbles: true }));
     };
     try {
+        log('Переключаем вкладку');
         const tab = await waitFor('li.ui-state-default a[href="#logintabs-5"]');
         if (tab) { tab.click(); await sleep(1000); }
         const innInput = await waitFor('#innogrn');
@@ -1194,12 +1346,14 @@ async function fillVneshfinbankForm() {
         status.textContent = '✅ Внешфинбанк заполнен';
         setTimeout(() => status.remove(), 5000);
     } catch (e) {
+        log('Ошибка в Внешфинбанк', e);
         status.textContent = `❌ Ошибка: ${e.message}`;
         setTimeout(() => status.remove(), 5000);
     }
 }
 
 async function fillGosOblakoForm() {
+    log('=== Начало заполнения ГосОблако ===');
     const data = GM_getValue('bankRequestData', null);
     if (!data || !data.inn) { showStatus('❌ Нет данных'); return; }
     const status = showStatus('⏳ ГосОблако...', 0);
@@ -1210,6 +1364,7 @@ async function fillGosOblakoForm() {
         el.dispatchEvent(new Event('change', { bubbles: true }));
     };
     try {
+        log('Ввод ИНН');
         const innField = await waitFor('.ApplicationNewInn input[type="search"]');
         setInput(innField, data.inn);
         innField.dispatchEvent(new Event('blur', { bubbles: true }));
@@ -1267,10 +1422,12 @@ async function fillGosOblakoForm() {
         status.textContent = '✅ ГосОблако заполнен';
         setTimeout(() => status.remove(), 5000);
     } catch (e) {
+        log('Ошибка в ГосОблако', e);
         status.textContent = `❌ Ошибка: ${e.message}`;
         setTimeout(() => status.remove(), 5000);
     }
 }
+
 
 function initRealist() {
     if (document.querySelector('#product_id')) {
@@ -1278,17 +1435,17 @@ function initRealist() {
         btn.className = 'tm-bank-fill-btn'; btn.style.background = '#607D8B'; btn.style.color = 'white';
         btn.style.bottom = '20px'; btn.style.right = '20px';
         btn.textContent = 'Заполнить РеалистБанк';
-        btn.onclick = fillRealistForm;
+        btn.onclick = () => { if (!realistFormRunning) fillRealistForm(); };
         document.body.appendChild(btn);
         window.addEventListener('message', (event) => {
             if (event.data && event.data.type === 'AUTOFILLREALIST_AUTOFILL') {
                 if (event.data.payload) GM_setValue('bankRequestData', event.data.payload);
-                fillRealistForm();
+                if (!realistFormRunning) fillRealistForm();
             }
         });
         if (GM_getValue('autoFillRealist', false)) {
             GM_setValue('autoFillRealist', false);
-            setTimeout(fillRealistForm, 3000);
+            setTimeout(() => { if (!realistFormRunning) fillRealistForm(); }, 3000);
         }
     }
     if (document.querySelector('#client_legal_full_name')) {
@@ -1301,6 +1458,9 @@ function initRealist() {
     }
 }
 
+let realistFormRunning = false;
+let alfaFormRunning = false;
+
 function initAlfa() {
     waitFor('[data-test-id="principal-field"]', 60000).then(() => {
         if (!document.querySelector('.tm-bank-fill-btn[style*="#EF3124"]')) {
@@ -1308,12 +1468,14 @@ function initAlfa() {
             btn.className = 'tm-bank-fill-btn'; btn.style.background = '#EF3124'; btn.style.color = 'white';
             btn.style.bottom = '20px'; btn.style.right = '20px';
             btn.textContent = 'Заполнить Альфа-Банк';
-            btn.onclick = fillAlfaForm;
+            btn.onclick = () => {
+                if (!alfaFormRunning) fillAlfaForm();
+            };
             document.body.appendChild(btn);
         }
-        if (GM_getValue('autoFillAlfa', false)) {
+        if (GM_getValue('autoFillAlfa', false) && !alfaFormRunning) {
             GM_setValue('autoFillAlfa', false);
-            setTimeout(fillAlfaForm, 3000);
+            setTimeout(() => { if (!alfaFormRunning) fillAlfaForm(); }, 3000);
         }
     }).catch(() => {});
     waitFor('[data-test-id="companyInfoForm"]', 60000).then(() => {
@@ -1329,7 +1491,7 @@ function initAlfa() {
     window.addEventListener('message', (event) => {
         if (event.data && event.data.type === 'AUTOFILLALFA_AUTOFILL') {
             if (event.data.payload) GM_setValue('bankRequestData', event.data.payload);
-            fillAlfaForm();
+            if (!alfaFormRunning) fillAlfaForm();
         }
     });
 }
