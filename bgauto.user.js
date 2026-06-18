@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name [ALL] CRM + банки (единый)
 // @namespace http://tampermonkey.net/
-// @version 7.2
+// @version 7.3
 // @description Автосохранение, автозаполнение заявок и анкет банков
 // @author VladNevermore
 // @match https://crm.finleo.ru/crm/orders/*
@@ -62,6 +62,10 @@
 `);
 
 const log = (msg, data) => console.log(`[AllInOne] ${msg}`, data || '');
+
+let realistFormRunning = false;
+let kubanFormRunning = false;
+let alfaFormRunning = false;
 
 const showStatus = (msg, duration = 4000) => {
     const old = document.querySelector('.tm-status');
@@ -399,6 +403,69 @@ function initCRM() {
     new MutationObserver(addBankButtons).observe(document.body, { childList: true, subtree: true });
 }
 
+async function selectDateInVuetifyPicker(inputElement, dateStr) {
+    if (!dateStr) return;
+    log(`Выбираем дату "${dateStr}" в календаре`);
+
+    document.body.click();
+    await sleep(200);
+
+    inputElement.click();
+    await sleep(400);
+
+    let picker = null;
+    for (let i = 0; i < 20; i++) {
+        const activeMenu = document.querySelector('.v-menu__content.menuable__content__active');
+        if (activeMenu) {
+            picker = activeMenu.querySelector('.v-date-picker-table');
+            if (picker) break;
+        }
+        await sleep(200);
+    }
+    if (!picker) {
+        log('Календарь не появился');
+        return;
+    }
+
+    const [day, month, year] = dateStr.split('.');
+    const targetDay = parseInt(day, 10);
+    const targetMonthStr = new Date(`${year}-${month}-01`).toLocaleString('ru', { month: 'long' });
+
+    let headerBtn = document.querySelector('.v-date-picker-header__value button');
+    if (headerBtn) {
+        const maxClicks = 24;
+        let clicks = 0;
+        while (clicks < maxClicks && headerBtn) {
+            const headerText = headerBtn.textContent.trim();
+            if (headerText.includes(targetMonthStr) && headerText.includes(year)) break;
+            const nextBtn = document.querySelector('.v-date-picker-header button[aria-label="Следующий месяц"]');
+            if (!nextBtn) break;
+            nextBtn.click();
+            await sleep(300);
+            headerBtn = document.querySelector('.v-date-picker-header__value button');
+            clicks++;
+        }
+    }
+
+    const dayButtons = document.querySelectorAll('.v-date-picker-table button .v-btn__content');
+    let clicked = false;
+    for (const btnContent of dayButtons) {
+        if (parseInt(btnContent.textContent, 10) === targetDay) {
+            const btn = btnContent.parentElement;
+            if (btn && btn.tagName === 'BUTTON') {
+                btn.click();
+                clicked = true;
+                await sleep(200);
+                break;
+            }
+        }
+    }
+
+    document.body.click();
+    await sleep(200);
+    log(clicked ? `Дата ${dateStr} выбрана` : `Не удалось найти день ${targetDay} в календаре`);
+}
+
 
 async function fillRealistForm() {
     if (realistFormRunning) return;
@@ -447,49 +514,7 @@ async function fillRealistForm() {
         if (data.endDate) {
             log('Заполняем дату окончания через календарь');
             const dateInput = await waitFor('#bg_end_at');
-            dateInput.focus();
-            dateInput.value = '';
-            dateInput.dispatchEvent(new Event('input', { bubbles: true }));
-            dateInput.value = data.endDate;
-            dateInput.dispatchEvent(new Event('input', { bubbles: true }));
-            dateInput.dispatchEvent(new Event('change', { bubbles: true }));
-            await sleep(500);
-            const calendar = document.querySelector('.datepicker.dropdown-menu[style*="display: block"]');
-            if (calendar) {
-                const day = parseInt(data.endDate.split('.')[0], 10);
-                log(`Ищем день ${day} в календаре`);
-                const dayCells = calendar.querySelectorAll('td.day:not(.disabled):not(.old)');
-                let clicked = false;
-                for (const cell of dayCells) {
-                    if (parseInt(cell.textContent, 10) === day) {
-                        cell.click();
-                        clicked = true;
-                        await sleep(300);
-                        break;
-                    }
-                }
-                if (!clicked) {
-                    log('День не найден в текущем месяце, закрываем календарь и вводим в hidden');
-                    document.body.click();
-                    await sleep(200);
-                    const hiddenInput = document.querySelector('input[name="bg_end_at"]');
-                    if (hiddenInput) {
-                        hiddenInput.value = data.endDate;
-                        hiddenInput.dispatchEvent(new Event('input', { bubbles: true }));
-                        hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                }
-            } else {
-                log('Календарь не появился, вводим в скрытое поле');
-                const hiddenInput = document.querySelector('input[name="bg_end_at"]');
-                if (hiddenInput) {
-                    hiddenInput.value = data.endDate;
-                    hiddenInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-            }
-            document.body.click();
-            await sleep(300);
+            await selectDateInVuetifyPicker(dateInput, data.endDate);
         }
 
         await fillField('#auction_number', data.notice);
@@ -698,7 +723,7 @@ async function fillAlfaForm() {
         if (radioLaw) radioLaw.click();
 
         if (data.law === '44') {
-                        log('44-ФЗ: выбираем публикацию "Реестр ЕИС"');
+            log('44-ФЗ: выбираем публикацию "Реестр ЕИС"');
             const pubSelect = await waitFor('[data-test-id="publicationRegistry"] .select__field_pkyjw');
             pubSelect.click();
             const pubOption = await waitFor(`[data-test-id="publicationRegistry-option"]`, 5000);
@@ -923,93 +948,184 @@ async function fillTendertechForm() {
     const data = GM_getValue('bankRequestData', null);
     if (!data || !data.inn) { showStatus('❌ Нет данных'); return; }
     const status = showStatus('⏳ Тендертех...', 0);
+    const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    const setInput = (el, val) => {
+        nativeSetter.call(el, val);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+    };
     try {
         const isTablePage = window.location.href.includes('/table/my-applications');
         if (isTablePage) {
             log('Создание новой заявки');
             const newBtn = await waitFor('[data-qa="buttonNewApplication"]');
             newBtn.click();
-            await sleep(1500);
-            const modal = await waitFor('[data-qa="modalNewApplication"]');
+            await waitFor('[data-qa="modalNewApplicationButtonCreate"]', 15000);
+            await sleep(500);
+
+            log('Заполняем номер закупки');
             const rntInput = await waitFor('[data-qa="modalNewApplicationInputRnt"]');
             rntInput.value = data.notice || '';
             rntInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+            log('Выбираем тип гарантии');
             const typeSelect = await waitFor('[data-qa="modalNewApplicationSelectTypeBg"]');
-            typeSelect.click();
-            await sleep(500);
+
             const typeMap = {
-                'БГ на участие': 'Банковская гарантия на участие в тендере',
-                'БГ на исполнение': 'Банковская гарантия на исполнение контракта',
-                'БГ на гарантийный срок': 'Банковская гарантия на обеспечение гарантийных обязательств'
+                'БГ на участие': 'участие в тендере',
+                'БГ на исполнение': 'исполнение контракта',
+                'БГ на гарантийный срок': 'обеспечение гарантийных обязательств'
             };
-            let targetType = typeMap[data.needText] || 'Банковская гарантия на исполнение контракта';
-            log(`Тип гарантии: ${targetType}`);
-            const options = document.querySelectorAll('.v-menu__content .options__item');
-            for (const opt of options) {
-                if (opt.textContent.trim() === targetType) { opt.click(); break; }
+            const targetText = typeMap[data.needText] || 'исполнение контракта';
+            log(`Целевой текст опции: "${targetText}"`);
+
+            typeSelect.click();
+            typeSelect.dispatchEvent(new Event('mousedown', { bubbles: true, cancelable: true }));
+            typeSelect.dispatchEvent(new Event('mouseup', { bubbles: true, cancelable: true }));
+
+            await sleep(400);
+
+            const opts = document.querySelectorAll('.options__item');
+            log(`Найдено элементов в списке: ${opts.length}`);
+
+            let clicked = false;
+            for (const opt of opts) {
+                const optText = opt.textContent.toLowerCase().trim();
+                if (optText.includes(targetText.toLowerCase().trim())) {
+                    log(`Найдено совпадение! Кликаем на: "${opt.textContent.trim()}"`);
+
+                    opt.click();
+                    opt.dispatchEvent(new Event('mousedown', { bubbles: true, cancelable: true }));
+                    opt.dispatchEvent(new Event('mouseup', { bubbles: true, cancelable: true }));
+                    clicked = true;
+                    break;
+                }
             }
-            await sleep(500);
+
+            if (!clicked) {
+                log('⚠️ Опция не найдена по тексту. Пробуем кликнуть по первому доступному элементу.');
+                if (opts.length > 0) {
+                    opts[0].click();
+                    clicked = true;
+                }
+            }
+
+            await sleep(300);
+
+            const errorSpan = document.querySelector('.select-describe span');
+            const isInvalid = typeSelect.classList.contains('invalid') || (errorSpan && errorSpan.textContent.includes('Вы должны выбрать элемент'));
+
+            if (isInvalid) {
+                log('⚠️ Валидация всё ещё ругается. Пробуем принудительно вызвать события на инпуте.');
+
+                const wasReadonly = typeSelect.hasAttribute('readonly');
+                if (wasReadonly) typeSelect.removeAttribute('readonly');
+
+                const fullText = 'Банковская гарантия на ' + targetText;
+                typeSelect.value = fullText;
+
+                typeSelect.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+                typeSelect.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+                typeSelect.dispatchEvent(new Event('blur', { bubbles: true, cancelable: true }));
+
+                if (wasReadonly) typeSelect.setAttribute('readonly', 'readonly');
+                log('Выполнена принудительная простановка текста');
+            } else {
+                log('✅ Тип гарантии успешно выбран, класс invalid снят');
+            }
+
+
+            log('Выбираем "Выбрать анкету"');
             const radioClient = document.querySelector('[data-qa="modalNewApplicationRadioClient"] input[type="radio"]');
             if (radioClient) { radioClient.click(); await sleep(300); }
+
+            log('Ищем клиента по ИНН');
             const searchInput = await waitFor('[data-qa="modalNewApplicationInputClientSearch"]');
-            searchInput.value = data.inn;
+            searchInput.focus();
+            searchInput.click();
+            await sleep(300);
+            searchInput.value = '';
             searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-            await sleep(3000);
-            const clientRow = document.querySelector('table tbody tr:not(.no-border-bottom)');
-            if (clientRow) {
-                log('Клиент найден в таблице');
-                const radioInTable = clientRow.querySelector('input[type="radio"]');
-                if (radioInTable) { radioInTable.click(); await sleep(300); }
-            } else {
-                log('Клиент не найден, вводим ИНН вручную');
+            const inn = data.inn;
+            for (const char of inn) {
+                searchInput.value += char;
+                searchInput.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
+                searchInput.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
+                searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+                await sleep(100);
+            }
+            searchInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            searchInput.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
+            searchInput.dispatchEvent(new Event('change', { bubbles: true }));
+            log('ИНН введён, ждём обновления таблицы');
+            await sleep(4000);
+
+            const clientRows = document.querySelectorAll('table tbody tr:not(.no-border-bottom)');
+            let foundClient = false;
+            for (const row of clientRows) {
+                const cells = row.querySelectorAll('td');
+                for (const td of cells) {
+                    if (td.textContent.trim() === inn) {
+                        log('Клиент найден, выбираем');
+                        const radioInTable = row.querySelector('input[type="radio"]');
+                        if (radioInTable) { radioInTable.click(); foundClient = true; await sleep(300); break; }
+                    }
+                }
+                if (foundClient) break;
+            }
+
+            if (!foundClient) {
+                log('Клиент не найден в таблице, вводим ИНН вручную');
                 const radioInn = document.querySelector('[data-qa="modalNewApplicationRadioInn"] input[type="radio"]');
                 if (radioInn) { radioInn.click(); await sleep(300); }
                 const innInput = await waitFor('[data-qa="modalNewApplicationInputInn"]');
-                innInput.value = data.inn;
-                innInput.dispatchEvent(new Event('input', { bubbles: true }));
+                setInput(innInput, data.inn);
             }
             await sleep(500);
+
+            log('Нажимаем "Создать заявку"');
             const createBtn = await waitFor('[data-qa="modalNewApplicationButtonCreate"]');
             createBtn.click();
             await sleep(5000);
+
             status.textContent = '⏳ Ожидаем перехода на страницу параметров...';
-            await waitFor('[data-qa="inputSumBgParameters"]', 30000);
-            status.textContent = '⏳ Заполняем параметры...';
+            await waitFor('[data-qa="inputSumBgParameters"]', 40000);
+            status.textContent = '⏳ Страница параметров загружена';
         }
 
-        const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-        const setInput = (el, val) => {
-            nativeSetter.call(el, val);
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-            el.dispatchEvent(new Event('change', { bubbles: true }));
-        };
-
-        log('Заполнение параметров');
+        log('Заполнение суммы БГ');
         const sumBg = await waitFor('[data-qa="inputSumBgParameters"]');
         setInput(sumBg, data.sum || '');
-        if (data.startDate) {
-            const fromDate = await waitFor('[data-qa="inputDateBgFromParameters"]');
-            setInput(fromDate, data.startDate);
+
+                if (data.startDate) {
+            const fromDateInput = await waitFor('[data-qa="inputDateBgFromParameters"]');
+            await selectDateInVuetifyPicker(fromDateInput, data.startDate);
+            await sleep(500);
         }
         if (data.endDate) {
-            const toDate = await waitFor('[data-qa="inputDateBgToParameters"]');
-            setInput(toDate, data.endDate);
+            const toDateInput = await waitFor('[data-qa="inputDateBgToParameters"]');
+            await selectDateInVuetifyPicker(toDateInput, data.endDate);
         }
+
         const hasAdvance = data.advanceAmount && data.advanceAmount !== 'Нет';
         const radioYes = document.querySelector('[data-qa="radioPrepaidParameters"] [data-qa="yes"] input[type="radio"]');
         const radioNo = document.querySelector('[data-qa="radioPrepaidParameters"] [data-qa="no"] input[type="radio"]');
         if (hasAdvance && radioYes) radioYes.click();
         else if (!hasAdvance && radioNo) radioNo.click();
 
-        const isWarranty = data.needText.includes('гарантийный срок');
-        const warrantyYes = document.querySelector('[data-qa="radioWarrantyObligationsParameters"] [data-qa="yes"] input');
-        const warrantyNo = document.querySelector('[data-qa="radioWarrantyObligationsParameters"] [data-qa="no"] input');
-        if (isWarranty && warrantyYes) warrantyYes.click();
-        else if (!isWarranty && warrantyNo) warrantyNo.click();
 
+        log('Сохраняем изменения');
         const saveBtn = await waitFor('[data-qa="buttonSaveChangesParameters"]');
         saveBtn.click();
         await sleep(2000);
+
+        const noNeedBtn = document.querySelector('[data-qa="modalInsuranceButtonNoNeed"]');
+        if (noNeedBtn) {
+            log('Обнаружено окно страхования, нажимаем "Спасибо, не нужно"');
+            noNeedBtn.click();
+            await sleep(1000);
+        }
+
         status.textContent = '✅ Тендертех заполнен';
         setTimeout(() => status.remove(), 5000);
     } catch (e) {
@@ -1122,7 +1238,7 @@ async function fillLikebgForm() {
         const sugg = document.querySelector('.input-autocomplete__suggestion-wrap li, .suggestions-suggestion');
         if (sugg) { sugg.click(); await sleep(1000); }
 
-        log('Поиск поля "Реестровый номер закупки"');
+                log('Поиск поля "Реестровый номер закупки"');
         const noticeContainers = document.querySelectorAll('.input-autocomplete');
         let noticeInput = null;
         for (const container of noticeContainers) {
@@ -1135,8 +1251,19 @@ async function fillLikebgForm() {
         if (!noticeInput) throw new Error('Поле "Реестровый номер закупки" не найдено');
         setValue(noticeInput, data.notice);
         await sleep(2000);
-        const noticeSugg = document.querySelector('.input-autocomplete__suggestion-wrap li, .suggestions-suggestion');
-        if (noticeSugg) { noticeSugg.click(); await sleep(2000); }
+
+        let noticeSugg = null;
+        for (let i = 0; i < 15; i++) {
+            noticeSugg = document.querySelector('.input-autocomplete__drop li') ||
+                         document.querySelector('.input-autocomplete__suggestion-wrap li');
+            if (noticeSugg) break;
+            await sleep(300);
+        }
+        if (noticeSugg) {
+            log('Выбираем подсказку для номера закупки');
+            noticeSugg.click();
+            await sleep(1500);
+        }
 
         const typeRadios = document.querySelectorAll('input[type="radio"][value]');
         const typeMap = { 'БГ на участие': 'participation', 'БГ на исполнение': 'execution', 'БГ на гарантийный срок': 'garantue_warranty' };
@@ -1261,9 +1388,11 @@ async function fillLikebgForm() {
 }
 
 async function fillKubanKreditForm() {
+    if (kubanFormRunning) return;
+    kubanFormRunning = true;
     log('=== Начало заполнения Кубань Кредит ===');
     const data = GM_getValue('bankRequestData', null);
-    if (!data || !data.inn) { showStatus('❌ Нет данных'); return; }
+    if (!data || !data.inn) { showStatus('❌ Нет данных'); kubanFormRunning = false; return; }
     const status = showStatus('⏳ Кубань Кредит...', 0);
     const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
     const setInput = (el, val) => {
@@ -1276,8 +1405,13 @@ async function fillKubanKreditForm() {
         const innInput = await waitFor('input[name="entity_inn"]');
         setInput(innInput, data.inn);
         await sleep(500);
+
+        log('Ввод номера закупки');
         const purchaseInput = await waitFor('input[name="purchase"]');
         setInput(purchaseInput, data.notice || '');
+        await sleep(300);
+
+        log('Выбор типа гарантии');
         const bgTypeSelect = await waitFor('select[name="bg_types"]');
         let typeValue = '0';
         if (data.needText.includes('БГ на исполнение') && data.advanceAmount !== 'Нет') typeValue = '2';
@@ -1286,25 +1420,73 @@ async function fillKubanKreditForm() {
         else if (data.needText.includes('БГ на гарантийный срок')) typeValue = '3';
         bgTypeSelect.value = typeValue;
         bgTypeSelect.dispatchEvent(new Event('change', { bubbles: true }));
-        await sleep(300);
-        const finalPriceInput = await waitFor('input[name="final_price"]');
-        if (data.proposedPrice) setInput(finalPriceInput, data.proposedPrice);
-        const sumInput = await waitFor('input[name="execSum_0"]');
-        if (data.sum) setInput(sumInput, data.sum);
-        const dateFinishInput = await waitFor('input[name="date_finish_0"]');
-        if (data.endDate) {
-            dateFinishInput.value = data.endDate;
-            dateFinishInput.dispatchEvent(new Event('input', { bubbles: true }));
-            dateFinishInput.dispatchEvent(new Event('change', { bubbles: true }));
-            dateFinishInput.dispatchEvent(new Event('blur', { bubbles: true }));
-            await sleep(200);
+        log(`Установлен тип: ${typeValue}`);
+        await sleep(1200);
+
+        log('Заполнение суммы БГ');
+        const sumInput = await waitFor('input[name="execSum_0"]', 10000);
+        if (data.sum) {
+            setInput(sumInput, data.sum);
+            sumInput.dispatchEvent(new Event('blur', { bubbles: true }));
+            await sleep(300);
         }
+
+                        log('Заполнение даты окончания');
+        const dateInput = await waitFor('input[name="date_finish_0"]', 10000);
+        if (data.endDate) {
+            log(`Дата окончания: ${data.endDate}`);
+            dateInput.focus();
+            dateInput.click();
+            await sleep(500);
+            let calendar = document.querySelector('.datepicker-panel');
+            if (calendar) {
+                const day = parseInt(data.endDate.split('.')[0], 10);
+                const tryClickDay = (cal) => {
+                    const cells = cal.querySelectorAll('tbody td:not(.date-future)');
+                    for (const cell of cells) {
+                        if (parseInt(cell.textContent, 10) === day) {
+                            log(`Кликаем по дате: ${cell.textContent}`);
+                            cell.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+                let clicked = tryClickDay(calendar);
+                for (let i = 0; i < 2 && !clicked; i++) {
+                    const nextBtn = calendar.querySelector('.header__month .btn-next');
+                    if (nextBtn) {
+                        log('Переключаем месяц вперёд');
+                        nextBtn.click();
+                        await sleep(500);
+                        calendar = document.querySelector('.datepicker-panel');
+                        if (calendar) clicked = tryClickDay(calendar);
+                    } else break;
+                }
+                if (!clicked) {
+                    log('Не удалось выбрать дату в календаре, вводим текст');
+                    setInput(dateInput, data.endDate);
+                    dateInput.dispatchEvent(new Event('blur', { bubbles: true }));
+                    document.body.click();
+                    await sleep(300);
+                    dateInput.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            } else {
+                log('Календарь не открылся, вводим дату как текст');
+                setInput(dateInput, data.endDate);
+                dateInput.dispatchEvent(new Event('blur', { bubbles: true }));
+                await sleep(200);
+            }
+        }
+
         status.textContent = '✅ Кубань Кредит заполнен';
         setTimeout(() => status.remove(), 5000);
     } catch (e) {
         log('Ошибка в Кубань Кредит', e);
         status.textContent = `❌ Ошибка: ${e.message}`;
         setTimeout(() => status.remove(), 5000);
+    } finally {
+        kubanFormRunning = false;
     }
 }
 
@@ -1458,9 +1640,6 @@ function initRealist() {
     }
 }
 
-let realistFormRunning = false;
-let alfaFormRunning = false;
-
 function initAlfa() {
     waitFor('[data-test-id="principal-field"]', 60000).then(() => {
         if (!document.querySelector('.tm-bank-fill-btn[style*="#EF3124"]')) {
@@ -1497,6 +1676,7 @@ function initAlfa() {
 }
 
 function initTendertech() {
+    log('initTendertech: старт, URL:', window.location.href);
     if (document.querySelector('[data-qa="buttonNewApplication"]') || document.querySelector('[data-qa="inputSumBgParameters"]')) {
         const btn = document.createElement('button');
         btn.className = 'tm-bank-fill-btn'; btn.style.background = '#FF6F00'; btn.style.color = 'white';
@@ -1504,16 +1684,17 @@ function initTendertech() {
         btn.textContent = 'Заполнить Тендертех';
         btn.onclick = fillTendertechForm;
         document.body.appendChild(btn);
-        window.addEventListener('message', (event) => {
-            if (event.data && event.data.type === 'AUTOFILLTENDERTECH_AUTOFILL') {
-                if (event.data.payload) GM_setValue('bankRequestData', event.data.payload);
-                fillTendertechForm();
-            }
-        });
-        if (GM_getValue('autoFillTendertech', false)) {
-            GM_setValue('autoFillTendertech', false);
-            setTimeout(fillTendertechForm, 3000);
-        }
+        log('Кнопка "Заполнить Тендертех" добавлена');
+    }
+    const autoFill = GM_getValue('autoFillTendertech', false);
+    log(`Флаг autoFillTendertech = ${autoFill}`);
+    if (autoFill) {
+        GM_setValue('autoFillTendertech', false);
+        log('Запускаем автозаполнение через 2 секунды');
+        setTimeout(() => {
+            log('Вызов fillTendertechForm из initTendertech');
+            fillTendertechForm();
+        }, 2000);
     }
 }
 
@@ -1560,17 +1741,17 @@ function initKuban() {
     btn.className = 'tm-bank-fill-btn'; btn.style.background = '#2E7D32'; btn.style.color = 'white';
     btn.style.bottom = '20px'; btn.style.right = '20px';
     btn.textContent = 'Заполнить Кубань Кредит';
-    btn.onclick = fillKubanKreditForm;
+    btn.onclick = () => { if (!kubanFormRunning) fillKubanKreditForm(); };
     document.body.appendChild(btn);
     window.addEventListener('message', (event) => {
         if (event.data && event.data.type === 'AUTOFILLKUBAN_AUTOFILL') {
             if (event.data.payload) GM_setValue('bankRequestData', event.data.payload);
-            fillKubanKreditForm();
+            if (!kubanFormRunning) fillKubanKreditForm();
         }
     });
     if (GM_getValue('autoFillKuban', false)) {
         GM_setValue('autoFillKuban', false);
-        setTimeout(fillKubanKreditForm, 3000);
+        setTimeout(() => { if (!kubanFormRunning) fillKubanKreditForm(); }, 3000);
     }
 }
 
