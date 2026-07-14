@@ -7,36 +7,43 @@
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #1e1e2e; color: #cdd6f4; max-width: 600px; margin: 50px auto; padding: 20px; }
         h1 { color: #89b4fa; border-bottom: 2px solid #45475a; padding-bottom: 10px; font-size: 24px; }
-        p { color: #a6adc8; font-size: 14px; }
+        p { color: #a6adc8; font-size: 14px; line-height: 1.5; }
+        .instruction { background: #45475a; padding: 12px; border-radius: 6px; border-left: 4px solid #f9e2af; margin-bottom: 20px; color: #f9e2af; font-size: 13px; }
         .script-list { margin-top: 20px; }
         .script-item { display: flex; justify-content: space-between; align-items: center; background: #313244; padding: 15px; margin-bottom: 10px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         .script-name { font-weight: bold; color: #f5e0dc; font-size: 16px; }
-        .btn-install { background-color: #a6e3a1; color: #11111b; text-decoration: none; padding: 8px 16px; font-weight: bold; border-radius: 6px; transition: background 0.2s; font-size: 14px; }
-        .btn-install:hover { background-color: #94e2d5; }
+        .btn-download { background-color: #89b4fa; color: #11111b; text-decoration: none; padding: 8px 16px; font-weight: bold; border-radius: 6px; transition: background 0.2s; font-size: 14px; }
+        .btn-download:hover { background-color: #b4befe; }
     </style>
 </head>
 <body>
 
-    <h1>Каталог автоматизации (Tampermonkey)</h1>
-    <p>Нажмите на кнопку «Установить» напротив нужного скрипта. Расширение Tampermonkey автоматически перехватит запрос.</p>
+    <h1>Каталог автоматизации скриптов</h1>
+    
+    <div class="instruction">
+        <strong>Инструкция по установке:</strong><br>
+        1. Нажмите синюю кнопку «Скачать файл» напротив нужного скрипта.<br>
+        2. Перетащите скачанный файл из папки или панели загрузок мышкой прямо в это окно браузера.<br>
+        3. Откроется окно Tampermonkey — нажмите в нем кнопку «Установить».
+    </div>
 
     <div class="script-list">
         <!-- Скрипт 1 -->
         <div class="script-item">
             <span class="script-name">clue.user.js</span>
-            <a class="btn-install" href="./clue.user.js">Установить</a>
+            <a class="btn-download" href="./clue.user.js" download="clue.user.js">Скачать файл</a>
         </div>
 
         <!-- Скрипт 2 -->
         <div class="script-item">
             <span class="script-name">autologin.user.js</span>
-            <a class="btn-install" href="./autologin.user.js">Установить</a>
+            <a class="btn-download" href="./autologin.user.js" download="autologin.user.js">Скачать файл</a>
         </div>
 
         <!-- Скрипт 3 -->
         <div class="script-item">
             <span class="script-name">autotext.user.js</span>
-            <a class="btn-install" href="./autotext.user.js">Установить</a>
+            <a class="btn-download" href="./autotext.user.js" download="autotext.user.js">Скачать файл</a>
         </div>
     </div>
 
